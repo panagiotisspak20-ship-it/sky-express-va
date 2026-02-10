@@ -36,10 +36,12 @@ export const Settings = () => {
     })
 
     // Get App Version
-    // @ts-ignore (Accessing exposed electron process versions)
-    if (window.electron && window.electron.process) {
-      // @ts-ignore (Accessing exposed electron process versions)
-      setAppVersion(window.electron.process.versions.app || '1.1.0') // Fallback if not exposed properly yet
+    // @ts-ignore (Accessing exposed updater API)
+    if (window.api && window.api.updater && window.api.updater.getAppVersion) {
+      // @ts-ignore
+      window.api.updater.getAppVersion()
+        .then((version: string) => setAppVersion(version))
+        .catch((err: any) => console.error('Failed to get app version:', err))
     }
 
     // Register Updater Listeners

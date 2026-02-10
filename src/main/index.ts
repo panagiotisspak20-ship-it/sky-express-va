@@ -231,6 +231,10 @@ app.whenReady().then(() => {
   ipcMain.handle('quit-and-install', () => {
     autoUpdater.quitAndInstall()
   })
+
+  ipcMain.handle('get-app-version', () => {
+    return app.getVersion()
+  })
   createWindow()
 
   app.on('activate', function () {

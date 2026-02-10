@@ -52,6 +52,7 @@ const api = {
     getSchedules: (airlineIata: string, apiKey: string) => electronAPI.ipcRenderer.invoke('fetch-airlabs-schedules', airlineIata, apiKey) 
   },
   updater: {
+    getAppVersion: () => electronAPI.ipcRenderer.invoke('get-app-version'),
     checkForUpdates: () => electronAPI.ipcRenderer.invoke('check-for-update'),
     downloadUpdate: () => electronAPI.ipcRenderer.invoke('start-download'),
     quitAndInstall: () => electronAPI.ipcRenderer.invoke('quit-and-install'),
