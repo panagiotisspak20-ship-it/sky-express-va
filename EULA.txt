@@ -1,0 +1,28 @@
+END USER LICENSE AGREEMENT (EULA)
+
+IMPORTANT: PLEASE READ THIS LICENSE CAREFULLY BEFORE USING THIS SOFTWARE.
+
+1. LICENSE GRANT
+The "Sky Express Virtual Airline" assistant software ("Software") is licensed, not sold, to You ("User") by the Sky Express VA team ("Author") for use strictly under the terms of this Agreement. The Author reserves all rights not expressly granted to You.
+
+2. PERMITTED USE
+You are granted a revocable, non-exclusive, non-transferable, limited license to install and use the Software solely for personal, non-commercial purposes related to virtual aviation simulation.
+
+3. RESTRICTIONS
+You shall not:
+(a) Decompile, reverse engineer, disassemble, attempt to derive the source code of, or decrypt the Software;
+(b) Modification, adaptation, improvement, enhancement, translation or derivative work from the Software;
+(c) Violate any applicable laws, rules or regulations in connection with Your access or use of the Software;
+(d) Remove, alter or obscure any proprietary notice (including any notice of copyright or trademark) of the Author or its affiliates, partners, suppliers or the licensors of the Software.
+
+4. TERMINATION
+The Author may terminate your license at any time if you fail to comply with these terms. Upon termination, you must cease all use of the Software and delete all copies.
+
+5. DISCLAIMER OF WARRANTIES
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. THE AUTHOR DISCLAIMS ALL WARRANTIES AND CONDITIONS WITH REGARD TO THE SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES AND CONDITIONS OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+
+6. LIMITATION OF LIABILITY
+IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THE SOFTWARE.
+
+7. INTELLECTUAL PROPERTY
+All title, ownership rights, and intellectual property rights in and to the Software (including but not limited to any images, photographs, animations, video, audio, music, text, and "applets" incorporated into the Software) are owned by the Author.

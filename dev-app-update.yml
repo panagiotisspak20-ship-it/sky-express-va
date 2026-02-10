@@ -1,0 +1,3 @@
+provider: generic
+url: https://nbjxycyomnipheueznfu.supabase.co/storage/v1/object/public/updates/
+updaterCacheDirName: sky-express-va-updater

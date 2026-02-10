@@ -1,0 +1,104 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 
+  Sky Express VA Color Palette (from actual logo)
+  - Navy Blue: #1a365d (primary)
+  - Magenta/Pink: #d63384 (accent)
+  - White: #ffffff
+*/
+
+:root {
+  --sky-navy: #1a365d;
+  --sky-navy-light: #2c5282;
+  --sky-pink: #d63384;
+  --sky-pink-light: #e879a8;
+  --sky-pink-pale: #fce7ef;
+}
+
+body {
+  /* Clean modern font stack */
+  font-family: 'Tahoma', 'Segoe UI', 'Arial', sans-serif;
+  @apply bg-gradient-to-br from-slate-50 to-pink-50/30 text-[#333] antialiased overflow-hidden text-[12px];
+}
+
+/* Sky Express themed panel */
+.legacy-panel {
+  @apply bg-white border border-gray-200 shadow-sm rounded;
+}
+
+/* Accent border panel */
+.accent-panel {
+  @apply bg-white border-l-4 border-l-pink-500 shadow-md rounded;
+}
+
+/* Classic Status Bar Text */
+.status-text {
+  @apply text-[11px] text-[#444];
+}
+
+/* Standard Scrollbar with Sky Express colors */
+::-webkit-scrollbar {
+  width: 12px;
+  background: #f8fafc;
+  border-left: 1px solid #e2e8f0;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(to bottom, #1a365d, #2c5282);
+  border-radius: 6px;
+  border: 2px solid #f8fafc;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(to bottom, #2c5282, #1a365d);
+}
+
+/* Simulating the "Inset" look for inputs */
+.inset-box {
+  @apply border border-gray-300 bg-white shadow-inner rounded focus:border-pink-500 focus:ring-1 focus:ring-pink-200;
+}
+
+/* Sky Express Primary Button (Navy) */
+.btn-navy {
+  @apply bg-gradient-to-r from-[#1a365d] to-[#2c5282] text-white px-4 py-2 text-sm font-bold rounded shadow-md hover:from-[#2c5282] hover:to-[#1a365d] active:from-[#1a365d] active:to-[#1a365d] transition-all;
+}
+
+/* Sky Express Accent Button (Pink) */
+.btn-pink {
+  @apply bg-gradient-to-r from-[#d63384] to-[#c02578] text-white px-4 py-2 text-sm font-bold rounded shadow-md hover:from-[#c02578] hover:to-[#a91d65] active:from-[#a91d65] active:to-[#a91d65] transition-all;
+}
+
+/* Classic style button (for legacy look) */
+.btn-classic {
+  @apply bg-white border border-gray-300 px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-pink-50 hover:border-pink-400 hover:text-pink-700 active:bg-pink-100 rounded shadow-sm transition-colors;
+}
+
+/* Card hover effect */
+.card-hover {
+  @apply transition-all hover:shadow-lg hover:border-pink-300 hover:-translate-y-0.5;
+}
+
+/* Status badges */
+.badge-navy {
+  @apply bg-[#1a365d]/10 text-[#1a365d] border border-[#1a365d]/30 px-2 py-0.5 rounded text-xs font-bold;
+}
+
+.badge-pink {
+  @apply bg-pink-100 text-pink-700 border border-pink-300 px-2 py-0.5 rounded text-xs font-bold;
+}
+
+.badge-success {
+  @apply bg-green-100 text-green-700 border border-green-300 px-2 py-0.5 rounded text-xs font-bold;
+}
+
+/* Section headers */
+.section-header {
+  @apply text-lg font-bold text-[#1a365d] border-b-2 border-[#d63384] pb-2 mb-4;
+}
+
+/* Font utility */
+.font-tahoma {
+  font-family: 'Tahoma', 'Segoe UI', sans-serif;
+}
