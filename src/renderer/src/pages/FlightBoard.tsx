@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Search, Calendar, Filter, Plane, Upload, RefreshCw } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { Search, Calendar, Plane, RefreshCw } from 'lucide-react'
 import { supabase } from '../services/supabase'
-import { DataService } from '../services/dataService'
+
 import { useNavigate } from 'react-router-dom'
 
 interface Flight {

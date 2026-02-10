@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Bell, MessageSquare, LifeBuoy, X, Users, Trash2 } from 'lucide-react'
+import { Bell, MessageSquare, LifeBuoy, X, Users } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { DataService, FriendRequest, DirectMessage, SupportMessage } from '../services/dataService'
 import { supabase } from '../services/supabase'
