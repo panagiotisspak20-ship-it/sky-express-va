@@ -4,6 +4,7 @@ import { DataService, PilotProfile } from '../services/dataService'
 import { WeatherService } from '../services/weatherService'
 import { useNavigate } from 'react-router-dom'
 import { NotificationCenter } from '../components/NotificationCenter'
+import { InteractiveGlobe } from '../components/ui/InteractiveGlobe'
 
 export const Dashboard = () => {
   const navigate = useNavigate()
@@ -236,12 +237,15 @@ export const Dashboard = () => {
           </div>
         </div>
 
-        {/* Right Col: Recent Flights */}
-        <div className="legacy-panel flex flex-col h-full overflow-hidden">
-          <div className="bg-[#ddd] text-[#333] px-2 py-1 text-xs font-bold mb-2 border-b border-white">
+        {/* Right Col: Recent Flights & Globe */}
+        <div className="legacy-panel flex flex-col h-full overflow-hidden relative">
+          <div className="absolute inset-0 z-0 opacity-20 pointer-events-none overflow-hidden">
+            <InteractiveGlobe className="-mt-20 -mr-20" />
+          </div>
+          <div className="bg-[#ddd] text-[#333] px-2 py-1 text-xs font-bold mb-2 border-b border-white z-10 relative">
             RECENT LOGBOOK ENTRIES
           </div>
-          <div className="flex-1 overflow-y-auto bg-white inset-box">
+          <div className="flex-1 overflow-y-auto bg-white/80 inset-box z-10 relative backdrop-blur-sm">
             <table className="w-full text-[10px] text-left border-collapse">
               <thead className="bg-[#e1e1e1] sticky top-0">
                 <tr>

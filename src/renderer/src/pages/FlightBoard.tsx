@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Search, Calendar, Plane, RefreshCw } from 'lucide-react'
 import { supabase } from '../services/supabase'
+import { SkyLoader } from '../components/ui/SkyLoader'
 
 import { useNavigate } from 'react-router-dom'
 
@@ -142,7 +143,7 @@ export const FlightBoard = () => {
             <div className="flex-1 overflow-y-auto p-4 content-start grid gap-2">
                 {loading ? (
                     <div className="flex justify-center items-center h-40">
-                        <RefreshCw className="w-8 h-8 text-blue-500 animate-spin" />
+                        <SkyLoader text="Loading Flight Schedule..." />
                     </div>
                 ) : flights.length === 0 ? (
                     <div className="text-center py-20 opacity-50">

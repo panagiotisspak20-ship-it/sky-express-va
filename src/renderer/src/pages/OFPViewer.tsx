@@ -13,6 +13,7 @@ import {
   RefreshCw
 } from 'lucide-react'
 import { DataService } from '../services/dataService'
+import { SkyLoader } from '../components/ui/SkyLoader'
 import { formatZulu, formatLocal, formatDuration } from '../utils/dateUtils'
 
 export const OFPViewer = () => {
@@ -70,9 +71,7 @@ export const OFPViewer = () => {
   if (loading) {
     return (
       <div className="p-4 h-full flex flex-col items-center justify-center font-tahoma text-gray-600">
-        <Plane className="w-12 h-12 mb-4 animate-bounce text-blue-600" />
-        <h2 className="text-xl font-bold">Fetching Flight Plan...</h2>
-        <p> contacting SimBrief dispatch...</p>
+        <SkyLoader size="large" text="Dispatching SimBrief Flight Plan..." />
       </div>
     )
   }

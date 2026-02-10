@@ -11,6 +11,7 @@ import {
   Globe
 } from 'lucide-react'
 import { DataService, PilotProfile } from '../services/dataService'
+import { SkyLoader } from '../components/ui/SkyLoader'
 
 export const Settings = () => {
   const navigate = useNavigate()
@@ -183,7 +184,7 @@ export const Settings = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-xl font-bold text-blue-900 animate-pulse">UPDATING SETTINGS...</div>
+        <SkyLoader text="Updating Settings..." />
       </div>
     )
   }
@@ -194,8 +195,8 @@ export const Settings = () => {
         <h1 className="text-xl font-bold text-[#333] uppercase tracking-tighter mb-4 px-1 flex items-center gap-2">
           <SettingsIcon className="w-6 h-6" /> System Configuration
         </h1>
-        <div className="legacy-panel bg-[#fcfcfc] max-w-lg p-4 text-center text-gray-600">
-          Loading profile...
+        <div className="legacy-panel bg-[#fcfcfc] max-w-lg p-4 text-center text-gray-600 flex justify-center py-8">
+          <SkyLoader text="Loading profile..." />
         </div>
       </div>
     )

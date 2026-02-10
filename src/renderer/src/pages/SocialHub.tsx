@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { DataService, PilotProfile, DirectMessage } from '../services/dataService'
 import { supabase } from '../services/supabase'
 import { Users, Search, MessageCircle, Heart, UserPlus, X, Clock, Check } from 'lucide-react'
+import { SkyLoader } from '../components/ui/SkyLoader'
 
 // Helper Component for the Connection Button
 const ConnectButton = ({ pilot, currentUser, onAction }: { pilot: PilotProfile, currentUser: PilotProfile | null, onAction: (id: string) => void }): React.ReactElement | null => {
@@ -249,8 +250,8 @@ export const SocialHub = (): React.ReactElement => {
         </div>
 
         {loading ? (
-          <div className="flex-1 flex items-center justify-center text-gray-500 font-bold animate-pulse">
-            SCANNING PILOT NETWORK...
+          <div className="flex-1 flex items-center justify-center">
+            <SkyLoader text="Scanning Pilot Network..." />
           </div>
         ) : (
           <div
@@ -320,83 +321,85 @@ export const SocialHub = (): React.ReactElement => {
       </div>
 
       {/* RIGHT: CHAT PANE (SLIDE IN) */}
-      {chatOpen && selectedPilot && (
-        <motion.div
-          initial={{ x: 300, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          exit={{ x: 300, opacity: 0 }}
-          className="w-96 border-l-2 border-white bg-[#e6e6e6] shadow-xl flex flex-col"
-        >
-          {/* Chat Header */}
-          <div className="p-3 bg-blue-900 text-white font-bold flex justify-between items-center shadow-md">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 bg-white rounded-full overflow-hidden">
-                {selectedPilot.avatar_url ? (
-                  <img src={selectedPilot.avatar_url} className="w-full h-full object-cover" />
-                ) : null}
-              </div>
-              <div className="flex flex-col leading-none">
-                <span className="text-xs uppercase opacity-75">Chat with</span>
-                <span>{selectedPilot.callsign}</span>
-              </div>
-            </div>
-            <button onClick={() => setChatOpen(false)} className="hover:bg-blue-800 p-1 rounded">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Messages Area */}
-          <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-3 inset-box bg-white m-2 mb-0">
-            {messages.length === 0 && (
-              <div className="text-center text-xs text-gray-400 mt-10 italic">
-                No messages yet. Start the conversation!
-              </div>
-            )}
-            {messages.map((msg) => {
-              const isMe = msg.sender_id === currentUser?.id
-              return (
-                <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                  <div
-                    className={`p-2 rounded max-w-[80%] text-xs shadow-sm text-balance
-                       ${isMe
-                        ? 'bg-blue-100 border border-blue-200 text-blue-900 rounded-br-none'
-                        : 'bg-gray-100 border border-gray-200 text-gray-800 rounded-bl-none'
-                      }
-                     `}
-                  >
-                    {msg.message}
-                  </div>
-                  <span className="text-[9px] text-gray-400 mt-0.5">
-                    {new Date(msg.created_at).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </span>
+      {
+        chatOpen && selectedPilot && (
+          <motion.div
+            initial={{ x: 300, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: 300, opacity: 0 }}
+            className="w-96 border-l-2 border-white bg-[#e6e6e6] shadow-xl flex flex-col"
+          >
+            {/* Chat Header */}
+            <div className="p-3 bg-blue-900 text-white font-bold flex justify-between items-center shadow-md">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 bg-white rounded-full overflow-hidden">
+                  {selectedPilot.avatar_url ? (
+                    <img src={selectedPilot.avatar_url} className="w-full h-full object-cover" />
+                  ) : null}
                 </div>
-              )
-            })}
-          </div>
+                <div className="flex flex-col leading-none">
+                  <span className="text-xs uppercase opacity-75">Chat with</span>
+                  <span>{selectedPilot.callsign}</span>
+                </div>
+              </div>
+              <button onClick={() => setChatOpen(false)} className="hover:bg-blue-800 p-1 rounded">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-          {/* Input Area */}
-          <form onSubmit={handleSendMessage} className="p-2 flex gap-2">
-            <input
-              type="text"
-              className="flex-1 p-2 border border-gray-400 text-xs shadow-inner"
-              placeholder="Type a message..."
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              autoFocus
-            />
-            <button
-              type="submit"
-              disabled={!newMessage.trim()}
-              className="btn-classic px-4 font-bold disabled:opacity-50"
-            >
-              SEND
-            </button>
-          </form>
-        </motion.div>
-      )}
-    </div>
+            {/* Messages Area */}
+            <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-3 inset-box bg-white m-2 mb-0">
+              {messages.length === 0 && (
+                <div className="text-center text-xs text-gray-400 mt-10 italic">
+                  No messages yet. Start the conversation!
+                </div>
+              )}
+              {messages.map((msg) => {
+                const isMe = msg.sender_id === currentUser?.id
+                return (
+                  <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                    <div
+                      className={`p-2 rounded max-w-[80%] text-xs shadow-sm text-balance
+                       ${isMe
+                          ? 'bg-blue-100 border border-blue-200 text-blue-900 rounded-br-none'
+                          : 'bg-gray-100 border border-gray-200 text-gray-800 rounded-bl-none'
+                        }
+                     `}
+                    >
+                      {msg.message}
+                    </div>
+                    <span className="text-[9px] text-gray-400 mt-0.5">
+                      {new Date(msg.created_at).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Input Area */}
+            <form onSubmit={handleSendMessage} className="p-2 flex gap-2">
+              <input
+                type="text"
+                className="flex-1 p-2 border border-gray-400 text-xs shadow-inner"
+                placeholder="Type a message..."
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                autoFocus
+              />
+              <button
+                type="submit"
+                disabled={!newMessage.trim()}
+                className="btn-classic px-4 font-bold disabled:opacity-50"
+              >
+                SEND
+              </button>
+            </form>
+          </motion.div>
+        )
+      }
+    </div >
   )
 }

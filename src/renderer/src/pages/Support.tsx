@@ -9,6 +9,7 @@ import {
   CheckCircle
 } from 'lucide-react'
 import { DataService } from '../services/dataService'
+import { SkyLoader } from '../components/ui/SkyLoader'
 
 // --- Types ---
 interface Ticket {
@@ -242,7 +243,9 @@ const ChatView = ({ ticket, onDelete }: { ticket: Ticket; onDelete: () => void }
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-2 space-y-3 bg-white border border-gray-200 m-2 mb-0">
         {loading && (
-          <div className="text-center text-xs text-gray-500 mt-4">Loading messages...</div>
+          <div className="flex items-center justify-center py-8">
+            <SkyLoader size="small" text="Loading messages..." />
+          </div>
         )}
 
         {!loading && messages.length === 0 && (
@@ -442,7 +445,9 @@ export const Support = (): React.ReactElement => {
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-2">
               {loadingTickets && (
-                <div className="text-center text-xs text-gray-500 py-4">Loading...</div>
+                <div className="flex items-center justify-center py-8">
+                  <SkyLoader size="medium" text="Loading tickets..." />
+                </div>
               )}
               {!loadingTickets && tickets.length === 0 && (
                 <div className="text-center text-xs text-gray-500 py-4 italic">

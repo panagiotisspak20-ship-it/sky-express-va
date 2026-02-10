@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, AlertTriangle, CheckCircle } from 'lucide-react'
 import { DataService } from '../services/dataService'
+import { SkyLoader } from '../components/ui/SkyLoader'
 
 export const PirepDetail = () => {
     const { id } = useParams()
@@ -20,7 +21,11 @@ export const PirepDetail = () => {
         setLoading(false)
     }
 
-    if (loading) return <div className="p-4 text-center">Loading Report...</div>
+    if (loading) return (
+        <div className="h-full flex items-center justify-center">
+            <SkyLoader text="Loading Report..." />
+        </div>
+    )
     if (!pirep) return <div className="p-4 text-center text-red-500">Report not found.</div>
 
     const evts = pirep.flight_events || []

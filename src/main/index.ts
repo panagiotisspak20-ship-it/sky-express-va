@@ -11,6 +11,14 @@ autoUpdater.logger = log
 autoUpdater.autoDownload = false
 autoUpdater.autoInstallOnAppQuit = true
 
+// Explicitly set the provider to GitHub just to be safe
+// (Optional if package.json repository is set correct, but good practice)
+autoUpdater.setFeedURL({
+  provider: 'github',
+  owner: 'panagiotisspak20-ship-it',
+  repo: 'sky-express-va'
+})
+
 
 
 function createWindow(): void {

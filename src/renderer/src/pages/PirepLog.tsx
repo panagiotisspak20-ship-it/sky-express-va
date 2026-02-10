@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { History, LayoutList, Trophy, TrendingUp, AlertTriangle } from 'lucide-react'
 import { DataService } from '../services/dataService'
+import { SkyLoader } from '../components/ui/SkyLoader'
 
 export const PirepLog = () => {
     const navigate = useNavigate()
@@ -52,7 +53,9 @@ export const PirepLog = () => {
                 </div>
 
                 {loading ? (
-                    <div className="flex-1 flex items-center justify-center text-gray-500">Loading PIREPs...</div>
+                    <div className="flex-1 flex items-center justify-center">
+                        <SkyLoader text="Loading PIREPs..." />
+                    </div>
                 ) : pireps.length === 0 ? (
                     <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
                         <History className="w-12 h-12 mb-2 opacity-20" />
