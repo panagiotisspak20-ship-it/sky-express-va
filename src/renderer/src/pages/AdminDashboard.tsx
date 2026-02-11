@@ -13,7 +13,6 @@ import {
   Lock,
   Trash2,
   Users,
-  AlertTriangle,
   Megaphone,
   Edit,
   Ban,
