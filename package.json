@@ -1,6 +1,6 @@
 {
   "name": "sky-express-va",
-  "version": "1.3.5",
+  "version": "1.3.4",
   "description": "Sky Express Virtual Airline Assistant",
   "main": "./out/main/index.js",
   "author": "example.com",
