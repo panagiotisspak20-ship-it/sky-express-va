@@ -702,7 +702,6 @@ export const DataService = {
       flightHours: Number(p.flight_hours),
       balance: Number(p.balance),
       reputation: 100,
-
       isAdmin: p.is_admin,
       status: p.status || 'active'
     }))
