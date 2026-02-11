@@ -4,6 +4,7 @@ export interface WeatherData {
   windDirection: number
   pressure: number
   humidity: number
+  visibility: number
   condition: string
   location: string
 }
@@ -21,8 +22,9 @@ export const WeatherService = {
         windDirection: current.wind_direction_10m,
         pressure: current.surface_pressure,
         humidity: current.relative_humidity_2m,
+        visibility: current.visibility || 10000,
         condition: this.getWeatherCondition(current.weather_code),
-        location: 'Athens Intl. (LGAV)' // Hardcoded for hub for now
+        location: 'Athens Intl. (LGAV)' 
       }
     } catch (error) {
       console.error('Failed to fetch weather', error)
@@ -33,6 +35,7 @@ export const WeatherService = {
         windDirection: 180,
         pressure: 1013,
         humidity: 50,
+        visibility: 10000,
         condition: 'Unknown',
         location: 'Athens Intl. (Offline)'
       }

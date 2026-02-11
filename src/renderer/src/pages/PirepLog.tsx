@@ -62,7 +62,7 @@ export const PirepLog = () => {
                         <p>No PIREPs filed yet.</p>
                     </div>
                 ) : (
-                    <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                    <div className="flex-1 overflow-y-auto p-2 space-y-2" data-tutorial="pirep-list">
                         {pireps.map(p => (
                             <div
                                 key={p.id}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plane, Trash2 } from 'lucide-react'
+import { Plane, Trash2, Download, ArrowUpCircle } from 'lucide-react'
 import { DataService, PilotProfile } from '../services/dataService'
 import { WeatherService } from '../services/weatherService'
 import { useNavigate } from 'react-router-dom'
@@ -13,6 +13,12 @@ export const Dashboard = () => {
   const [lastLanding, setLastLanding] = useState<{ rate: number; location: string } | null>(null)
   const [logbook, setLogbook] = useState<any[]>([])
   const [nextFlight, setNextFlight] = useState<any>(null)
+
+  // Update state
+  const [updateAvailable, setUpdateAvailable] = useState(false)
+  const [updateDownloaded, setUpdateDownloaded] = useState(false)
+  const [downloadProgress, setDownloadProgress] = useState(0)
+  const [isDownloading, setIsDownloading] = useState(false)
 
 
 
@@ -46,10 +52,35 @@ export const Dashboard = () => {
       })
     }
 
-
+    // Listen for app updates
+    let cleanupUpdateAvailable: (() => void) | undefined
+    let cleanupUpdateDownloaded: (() => void) | undefined
+    let cleanupDownloadProgress: (() => void) | undefined
+    // @ts-ignore - window.api may not exist in dev
+    if (window.api && window.api.updater) {
+      // @ts-ignore
+      cleanupUpdateAvailable = window.api.updater.onUpdateAvailable(() => {
+        setUpdateAvailable(true)
+      })
+      // @ts-ignore
+      cleanupDownloadProgress = window.api.updater.onDownloadProgress((progress: any) => {
+        setDownloadProgress(progress.percent || 0)
+      })
+      // @ts-ignore
+      cleanupUpdateDownloaded = window.api.updater.onUpdateDownloaded(() => {
+        setUpdateDownloaded(true)
+        setIsDownloading(false)
+      })
+      // Auto-check for updates on mount
+      // @ts-ignore
+      window.api.updater.checkForUpdates()
+    }
 
     return () => {
       if (cleanup) cleanup()
+      if (cleanupUpdateAvailable) cleanupUpdateAvailable()
+      if (cleanupUpdateDownloaded) cleanupUpdateDownloaded()
+      if (cleanupDownloadProgress) cleanupDownloadProgress()
     }
   }, [])
 
@@ -78,6 +109,36 @@ export const Dashboard = () => {
           </p>
         </div>
         <div className="flex gap-2 items-center">
+          {/* Update Available Button */}
+          {updateAvailable && (
+            <button
+              onClick={() => {
+                if (updateDownloaded) {
+                  // @ts-ignore
+                  window.api?.updater?.quitAndInstall()
+                } else if (!isDownloading) {
+                  setIsDownloading(true)
+                  // @ts-ignore
+                  window.api?.updater?.downloadUpdate()
+                }
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold rounded shadow-md transition-all ${updateDownloaded
+                ? 'bg-green-500 hover:bg-green-600 text-white'
+                : isDownloading
+                  ? 'bg-blue-500 text-white cursor-wait'
+                  : 'bg-gradient-to-r from-orange-400 to-pink-500 hover:from-orange-500 hover:to-pink-600 text-white animate-pulse'
+                }`}
+            >
+              {updateDownloaded ? (
+                <><ArrowUpCircle className="w-3.5 h-3.5" /> INSTALL NOW</>
+              ) : isDownloading ? (
+                <><Download className="w-3.5 h-3.5 animate-bounce" /> {Math.round(downloadProgress)}%</>
+              ) : (
+                <><Download className="w-3.5 h-3.5" /> UPDATE AVAILABLE</>
+              )}
+            </button>
+          )}
+
           <button
             onClick={() => navigate('/flights')}
             className="btn-classic flex items-center gap-1 active:bg-gray-300"
@@ -166,7 +227,7 @@ export const Dashboard = () => {
           {/* Weather Panel */}
           <div className="legacy-panel flex-1 flex flex-col min-h-[200px]">
             <div className="bg-gradient-to-r from-blue-800 to-blue-600 text-white px-2 py-1 text-xs font-bold mb-2 flex justify-between items-center shadow-sm">
-              <span>METAR / WEATHER (LGAV)</span>
+              <span>METAR / WEATHER ({weather?.location || 'LGAV'})</span>
               <span className="bg-blue-900 px-1 rounded text-[10px]">LIVE</span>
             </div>
 
@@ -201,7 +262,11 @@ export const Dashboard = () => {
                 </div>
                 <div className="flex justify-between border-b border-[#ddd]">
                   <span className="font-bold text-[#555]">VISIBILITY:</span>
-                  <span className="font-mono text-green-700">10km+</span>
+                  <span className="font-mono text-green-700">
+                    {weather?.visibility
+                      ? (weather.visibility >= 10000 ? '10km+' : (weather.visibility / 1000).toFixed(1) + 'km')
+                      : '10km+'}
+                  </span>
                 </div>
               </div>
             </div>

@@ -1,104 +1,20 @@
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../services/supabase'
 import { useNavigate } from 'react-router-dom'
-import { validateSchedule, getValidationSummary, FlightRow } from '../services/scheduleValidator'
 import {
   Calendar,
   Filter,
   Plane,
-  RefreshCw,
-  Upload,
-  AlertTriangle,
-  CheckCircle,
-  X
+  RefreshCw
 } from 'lucide-react'
 import { DataService } from '../services/dataService'
-
-// No default routes - users must import their own schedule via CSV
-const routeTemplates: any[] = []
-
-// Generate flights for the next N days
-const generateSchedule = (days: number, importedFlights?: FlightRow[]) => {
-  const flights: any[] = []
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  // Use imported flights if available, otherwise use templates
-  const templates =
-    importedFlights && importedFlights.length > 0
-      ? importedFlights.map((f) => ({
-        flightNo: f.flight_number,
-        origin: f.origin.length <= 4 ? `${f.origin} (${f.origin})` : f.origin,
-        dest: f.destination.length <= 4 ? `${f.destination} (${f.destination})` : f.destination,
-        depTime: f.departure_time,
-        aircraft: f.aircraft || 'A320neo',
-        duration: 60, // Default duration
-        days: f.days || 'MTWTFSS'
-      }))
-      : routeTemplates
-
-  for (let d = 0; d < days; d++) {
-    const date = new Date(today)
-    date.setDate(date.getDate() + d)
-    const dateStr = date.toISOString().split('T')[0]
-    const dayOfWeek = date.getDay()
-
-    templates.forEach((route: any, idx) => {
-      // Some routes don't operate on certain days
-      const operatesDaily = idx < 10
-      const operatesWeekdays = idx >= 10 && idx < 17
-      const operatesWeekends = idx >= 17
-
-      let shouldOperate = operatesDaily
-      if (operatesWeekdays && dayOfWeek >= 1 && dayOfWeek <= 5) shouldOperate = true
-      if (operatesWeekends && (dayOfWeek === 0 || dayOfWeek === 6)) shouldOperate = true
-      if (operatesDaily) shouldOperate = true
-
-      if (shouldOperate) {
-        const [depH, depM] = route.depTime.split(':').map(Number)
-        const depDate = new Date(date)
-        depDate.setHours(depH, depM, 0, 0)
-
-        const arrDate = new Date(depDate)
-        arrDate.setMinutes(arrDate.getMinutes() + route.duration)
-
-        flights.push({
-          id: `${route.flightNo}-${dateStr}`,
-          flightNo: route.flightNo,
-          origin: route.origin,
-          destination: route.dest,
-          depTime: route.depTime,
-          arrTime: arrDate.toTimeString().substring(0, 5),
-          aircraft: route.aircraft,
-          date: dateStr,
-          dateObj: date,
-          status: d === 0 ? 'Today' : d === 1 ? 'Tomorrow' : 'Scheduled'
-        })
-      }
-    })
-  }
-
-  return flights.sort((a, b) => {
-    if (a.date !== b.date) return a.date.localeCompare(b.date)
-    return a.depTime.localeCompare(b.depTime)
-  })
-}
 
 export const Flights = () => {
   const navigate = useNavigate()
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [filterAircraft, setFilterAircraft] = useState<string>('All')
-  const [showImportModal, setShowImportModal] = useState(false)
-  const [importResult, setImportResult] = useState<{
-    success: boolean
-    message: string
-    errors?: string[]
-    warnings?: string[]
-  } | null>(null)
-  const [importedFlights, setImportedFlights] = useState<FlightRow[]>([])
   const [dbFlights, setDbFlights] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Fetch flights from Supabase on mount
   useEffect(() => {
@@ -162,13 +78,10 @@ export const Flights = () => {
     fetchFlights()
   }, [])
 
-  // Combine DB flights (primary) or imported flights
+  // Combine DB flights (primary)
   const allFlights = useMemo(() => {
-    if (importedFlights.length > 0) {
-      return generateSchedule(30, importedFlights)
-    }
     return dbFlights
-  }, [importedFlights, dbFlights])
+  }, [dbFlights])
 
   // Get unique dates for calendar
   const uniqueDates = useMemo(() => {
@@ -245,149 +158,19 @@ export const Flights = () => {
     return date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
   }
 
-  // Handle CSV file import
-  const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
 
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      const content = event.target?.result as string
-      const result = validateSchedule(content)
-
-      if (result.valid && result.validRows.length > 0) {
-        setImportedFlights(result.validRows)
-        setImportResult({
-          success: true,
-          message: getValidationSummary(result),
-          errors: result.errors,
-          warnings: result.warnings
-        })
-      } else {
-        setImportResult({
-          success: false,
-          message: getValidationSummary(result),
-          errors: result.errors,
-          warnings: result.warnings
-        })
-      }
-      setShowImportModal(false)
-    }
-    reader.readAsText(file)
-
-    if (fileInputRef.current) fileInputRef.current.value = ''
-  }
-
-  const clearImport = () => {
-    setImportedFlights([])
-    setImportResult(null)
-  }
 
   return (
     <div className="p-4 h-full flex flex-col font-tahoma bg-[#f0f0f0]">
-      {/* Import Warning Modal */}
-      {showImportModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white border-2 border-gray-400 shadow-xl max-w-md w-full">
-            <div className="bg-gradient-to-r from-[#1a365d] to-[#2a4a7d] text-white px-4 py-2 flex justify-between items-center">
-              <span className="font-bold flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4" /> Import Flight Schedule
-              </span>
-              <button
-                onClick={() => setShowImportModal(false)}
-                className="hover:bg-white hover:bg-opacity-20 p-1 rounded"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="p-4">
-              <div className="bg-yellow-50 border border-yellow-400 p-3 mb-4 text-sm">
-                <p className="font-bold text-yellow-800 mb-2">⚠️ IMPORTANT - Data Authenticity</p>
-                <p className="text-yellow-700 mb-2">
-                  You must <strong>ONLY</strong> import real Sky Express flight schedules. All
-                  imported data will be <strong>automatically verified</strong>.
-                </p>
-                <ul className="text-yellow-700 text-xs list-disc ml-4 space-y-1">
-                  <li>
-                    Flight numbers must start with <strong>GQ</strong> (Sky Express IATA code)
-                  </li>
-                  <li>
-                    Non-Sky Express flights will be <strong>rejected</strong>
-                  </li>
-                  <li>Imported schedules may be checked for accuracy</li>
-                </ul>
-              </div>
-
-              <p className="text-sm text-gray-600 mb-3">
-                CSV format:{' '}
-                <code className="bg-gray-100 px-1">
-                  flight_number,origin,destination,departure_time,aircraft
-                </code>
-              </p>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv"
-                onChange={handleFileImport}
-                className="hidden"
-                id="csvFileInput"
-              />
-
-              <div className="flex gap-2">
-                <label
-                  htmlFor="csvFileInput"
-                  className="flex-1 btn-classic flex items-center justify-center gap-2 cursor-pointer bg-[#1a365d] text-white hover:bg-[#2a4a7d]"
-                >
-                  <Upload className="w-4 h-4" /> SELECT CSV FILE
-                </label>
-                <button onClick={() => setShowImportModal(false)} className="btn-classic">
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Import Result Banner */}
-      {importResult && (
-        <div
-          className={`mb-2 p-2 border flex items-center justify-between ${importResult.success ? 'bg-green-50 border-green-400' : 'bg-red-50 border-red-400'}`}
-        >
-          <div className="flex items-center gap-2">
-            {importResult.success ? (
-              <CheckCircle className="w-4 h-4 text-green-600" />
-            ) : (
-              <AlertTriangle className="w-4 h-4 text-red-600" />
-            )}
-            <span
-              className={`text-sm font-bold ${importResult.success ? 'text-green-800' : 'text-red-800'}`}
-            >
-              {importResult.message}
-            </span>
-          </div>
-          <button onClick={clearImport} className="text-xs text-gray-600 hover:underline">
-            {importedFlights.length > 0 ? 'Reset to Default' : 'Dismiss'}
-          </button>
-        </div>
-      )}
-
       <div className="flex justify-between items-center mb-2 px-1">
         <div className="flex items-center gap-2">
           <Calendar className="w-5 h-5 text-blue-600" />
           <h1 className="text-xl font-bold text-[#333] uppercase tracking-tighter">
             Flight Schedule
           </h1>
-          {importedFlights.length > 0 ? (
-            <span className="bg-green-600 text-white text-[10px] px-2 py-0.5 rounded">
-              IMPORTED
-            </span>
-          ) : (
-            <span className="bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded flex items-center gap-1">
-              {isLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : 'REAL WORLD DATA'}
-            </span>
-          )}
+          <span className="bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded flex items-center gap-1">
+            {isLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : 'REAL WORLD DATA'}
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <div className="text-xs text-gray-600 font-bold border border-gray-400 bg-white px-2 py-0.5">

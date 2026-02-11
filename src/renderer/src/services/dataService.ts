@@ -35,6 +35,7 @@ export interface PilotProfile {
   simBriefId?: string
   tutorialComplete?: boolean
   isAdmin?: boolean
+  status?: 'active' | 'suspended' | 'banned'
   // Password is no longer stored locally - handled by Supabase Auth
 }
 
@@ -116,7 +117,6 @@ export interface SupportTicket {
   status: 'open' | 'resolved' | 'closed'
   message: string // initial message
   created_at: string
-  ticket?: SupportTicket
   user?: PilotProfile
 }
 
@@ -128,6 +128,15 @@ export interface SupportMessage {
   created_at: string
   sender?: PilotProfile
   ticket?: SupportTicket
+}
+
+export interface SystemAnnouncement {
+  id: string
+  message: string
+  author_id: string
+  created_at: string
+  is_active: boolean
+  author?: PilotProfile
 }
 
 export const DataService = {
@@ -167,6 +176,7 @@ export const DataService = {
           simBriefUsername: data.simbrief_username,
           simBriefId: data.simbrief_id,
           isAdmin: data.is_admin || false,
+          status: data.status || 'active',
           // Store tutorial complete in local storage for now to avoid DB schema change for MVP
           tutorialComplete: localStorage.getItem(`tutorial_${user.id}`) === 'true'
         }
@@ -310,6 +320,33 @@ export const DataService = {
       data: { user }
     } = await supabase.auth.getUser()
     if (!user) return []
+
+    // Primary: read from Supabase cloud
+    const { data, error } = await supabase
+      .from('completed_flights')
+      .select('*')
+      .eq('pilot_id', user.id)
+      .order('created_at', { ascending: false })
+
+    if (!error && data) {
+      return data.map((row) => ({
+        id: row.id,
+        date: row.created_at,
+        flightNumber: row.flight_number || '',
+        departure: row.departure_icao || '',
+        arrival: row.arrival_icao || '',
+        aircraft: row.aircraft_type || '',
+        duration: row.flight_time || 0,
+        landingRate: row.landing_rate,
+        distance: row.distance,
+        score: row.score ?? 100,
+        earnings: row.revenue || 0,
+        events: row.flight_events || []
+      }))
+    }
+
+    // Fallback: read from local store if cloud fails
+    console.warn('[DataService] Cloud flight log unavailable, falling back to local:', error)
     const key = `flightLog_${user.id}`
     const api = (window as any).api
     if (api?.store) return (await api.store.get(key)) || []
@@ -336,7 +373,7 @@ export const DataService = {
         arrival_icao: entry.arrival,
         aircraft_type: entry.aircraft,
         flight_time: entry.duration, // minutes
-        distance: entry.distance,
+        distance: entry.distanceFlown || entry.distance,
         landing_rate: entry.landingRate,
         revenue: entry.earnings,
         score: entry.score || 100,
@@ -665,7 +702,11 @@ export const DataService = {
       flightHours: Number(p.flight_hours),
       balance: Number(p.balance),
       reputation: 100,
-      isAdmin: p.is_admin
+      flightHours: Number(p.flight_hours),
+      balance: Number(p.balance),
+      reputation: 100,
+      isAdmin: p.is_admin,
+      status: p.status || 'active'
     }))
   },
 
@@ -794,11 +835,71 @@ export const DataService = {
           })
         ])
       }
-    } else {
       // Reject: delete request
-      const { error } = await supabase.from('friend_requests').delete().eq('id', requestId)
-      if (error) throw error
+      const { error: deleteError } = await supabase.from('friend_requests').delete().eq('id', requestId)
+      if (deleteError) throw deleteError
     }
+  },
+
+  // --- ANNOUNCEMENTS ---
+
+  async createAnnouncement(message: string) {
+    const {
+      data: { user }
+    } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const { error } = await supabase.from('system_announcements').insert({
+      message,
+      author_id: user.id
+    })
+
+    if (error) throw error
+  },
+
+  async getActiveAnnouncements(): Promise<SystemAnnouncement[]> {
+    const { data, error } = await supabase
+      .from('system_announcements')
+      .select('*, author:profiles(callsign)')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('Error fetching announcements:', error)
+      return []
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (data as any[])?.map((a) => ({
+      ...a,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      author: (a as any).author
+    })) as unknown as SystemAnnouncement[]
+  },
+
+  async deleteAnnouncement(id: string) {
+    const { error } = await supabase.from('system_announcements').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  // --- ADMIN USER MANAGEMENT ---
+  async adminUpdatePilot(pilotId: string, updates: Partial<PilotProfile>) {
+    // Map frontend field names to database column names
+    const dbUpdates: Record<string, any> = {}
+    if (updates.flightHours !== undefined) dbUpdates.flight_hours = updates.flightHours
+    if (updates.balance !== undefined) dbUpdates.balance = updates.balance
+    if (updates.reputation !== undefined) dbUpdates.reputation = updates.reputation
+    if (updates.rank !== undefined) dbUpdates.rank = updates.rank
+    if (updates.homeBase !== undefined) dbUpdates.home_base = updates.homeBase
+    if (updates.currentLocation !== undefined) dbUpdates.current_location = updates.currentLocation
+    if (updates.status !== undefined) dbUpdates.status = updates.status
+    if (updates.callsign !== undefined) dbUpdates.callsign = updates.callsign
+
+    const { error } = await supabase
+      .from('profiles')
+      .update(dbUpdates)
+      .eq('id', pilotId)
+    if (error) throw error
   },
 
   async acceptRequestFrom(targetId: string) {

@@ -7,6 +7,7 @@ export class MsfsService {
   private interval: NodeJS.Timeout | null = null
   private window: Electron.BrowserWindow
   private wasOnGround: boolean = true
+  private wasAirborne: boolean = false
   private recentVerticalSpeeds: number[] = []
   private retryCount: number = 0
   private dataDefinitionId: number = 1
@@ -99,6 +100,24 @@ export class MsfsService {
       )
       // Fuel for tracking
       handle.addToDataDefinition(this.dataDefinitionId, 'FUEL TOTAL QUANTITY', 'gallons', 5)
+      // Bank angle for scoring
+      handle.addToDataDefinition(this.dataDefinitionId, 'PLANE BANK DEGREES', 'degrees', 5)
+      // G-Force for scoring
+      handle.addToDataDefinition(this.dataDefinitionId, 'G FORCE', 'GForce', 5)
+      // Landing Lights for scoring
+      handle.addToDataDefinition(
+        this.dataDefinitionId,
+        'LIGHT LANDING',
+        'bool',
+        4 // INT32
+      )
+      // Gear position for scoring
+      handle.addToDataDefinition(
+        this.dataDefinitionId,
+        'GEAR HANDLE POSITION',
+        'bool',
+        4 // INT32
+      )
 
       // Handle incoming data
       handle.on('simObjectData', (recvData) => {
@@ -116,10 +135,20 @@ export class MsfsService {
               onGround: data.readInt32() !== 0,
               engineRunning: data.readInt32() !== 0,
               parkingBrake: data.readInt32() !== 0,
-              fuelQuantity: data.readFloat64()
+              fuelQuantity: data.readFloat64(),
+              bankAngle: data.readFloat64(),
+              gForce: data.readFloat64(),
+              landingLights: data.readInt32() !== 0,
+              gearDown: data.readInt32() !== 0
+            }
+
+            // Track if aircraft was ever airborne this session
+            if (!telemetry.onGround && telemetry.groundspeed > 50) {
+              this.wasAirborne = true
             }
 
             this.detectLanding(telemetry)
+            this.monitorFlight(telemetry)
             this.detectParking(telemetry)
             this.window.webContents.send('msfs-data', telemetry)
           } catch (_e) {
@@ -159,6 +188,7 @@ export class MsfsService {
     this.connected = false
     this.handle = null
     this.wasOnGround = true
+    this.wasAirborne = false
     this.window.webContents.send('msfs-status', false)
     this.retryConnection()
   }
@@ -205,8 +235,23 @@ export class MsfsService {
   private maxBank: number = 0
   private maxG: number = 0
   private flightScore: number = 100
+  private totalDistance: number = 0 // NM
+  private lastLat: number = 0
+  private lastLon: number = 0
+  private hasLastPos: boolean = false
 
   monitorFlight(data: any) {
+    // Accumulate distance from GPS
+    if (data.latitude && data.longitude) {
+      if (this.hasLastPos) {
+        const dist = this.haversineNM(this.lastLat, this.lastLon, data.latitude, data.longitude)
+        if (dist < 10) this.totalDistance += dist // skip teleport glitches
+      }
+      this.lastLat = data.latitude
+      this.lastLon = data.longitude
+      this.hasLastPos = true
+    }
+
     // Only monitor if airborne or taking off
     if (!data.onGround) {
       
@@ -230,6 +275,21 @@ export class MsfsService {
         this.logPenalty('Excessive Bank Angle (> 40°)', 2)
       }
     }
+  }
+
+  // Haversine formula: distance between two lat/lon points in NM
+  private haversineNM(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 3440.065 // Earth radius in nautical miles
+    const dLat = ((lat2 - lat1) * Math.PI) / 180
+    const dLon = ((lon2 - lon1) * Math.PI) / 180
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2)
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    return R * c
   }
 
   // Helper to log penalty only once per minute to avoid spamming
@@ -258,9 +318,8 @@ export class MsfsService {
     const isParked =
       data.onGround && data.groundspeed < 5 && (!data.engineRunning || data.parkingBrake)
 
-    if (isParked && !this.flightCompleteNotified && this.wasOnGround === false) { 
-      // Ensure we actually flew (wasOnGround was false at some point)
-      // Note: monitorFlight updates isAirborne, but we use wasOnGround state from detectLanding helper for logic continuity
+    if (isParked && !this.flightCompleteNotified && this.wasAirborne) {
+      // Only fire if we actually flew (wasAirborne was set to true during flight)
       
       console.log('[MSFS] Aircraft parked - flight complete')
 
@@ -275,6 +334,7 @@ export class MsfsService {
         score: this.flightScore,
         grade: this.calculateGrade(this.flightScore),
         events: this.flightLog,
+        distanceFlown: Math.round(this.totalDistance),
         stats: {
             maxBank: this.maxBank,
             maxG: this.maxG,
@@ -299,10 +359,13 @@ export class MsfsService {
       if (this.flightCompleteNotified) {
         // New Flight Started - Reset Stats
         this.flightCompleteNotified = false
+        this.wasAirborne = false
         this.flightLog = []
         this.flightScore = 100
         this.maxBank = 0
         this.maxG = 0
+        this.totalDistance = 0
+        this.hasLastPos = false
         this.lastPenaltyTime = {}
         this.window.webContents.send('flight-started', true)
       }

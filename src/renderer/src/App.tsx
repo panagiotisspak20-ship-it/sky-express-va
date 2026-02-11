@@ -15,11 +15,13 @@ import { Settings } from './pages/Settings'
 import { SocialHub } from './pages/SocialHub'
 import { Support } from './pages/Support'
 import { Dispatch } from './pages/Dispatch'
+import { FreeRoam } from './pages/FreeRoam'
 import { PirepLog } from './pages/PirepLog'
 import { PirepDetail } from './pages/PirepDetail'
 import AdminDashboard from './pages/AdminDashboard'
 import { TutorialGuide } from './components/Tutorial'
 import { DataService } from './services/dataService'
+import { AnnouncementBanner } from './components/AnnouncementBanner'
 
 // Auth Guard Component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -49,47 +51,53 @@ const TutorialWrapper = () => {
 export default function App() {
   return (
     <Router>
-      <TutorialWrapper />
-      <Routes>
-        {/* Public Routes */}
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
+      <div className="flex flex-col h-screen overflow-hidden">
+        <TutorialWrapper />
+        <AnnouncementBanner />
+        <div className="flex-1 overflow-hidden relative">
+          <Routes>
+            {/* Public Routes */}
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
 
-        {/* Protected Routes */}
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <MainLayout />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<Dashboard />} />
-          <Route path="flights" element={<Flights />} />
-          <Route path="booked-flights" element={<BookedFlights />} />
-          <Route path="flight-history" element={<FlightHistory />} />
-          <Route path="flight-summary" element={<FlightSummary />} />
-          <Route path="flight-summary/:id" element={<FlightSummary />} />
-          <Route path="ofp-viewer" element={<OFPViewer />} />
-          <Route path="dispatch" element={<Dispatch />} />
-          <Route path="pireps" element={<PirepLog />} />
-          <Route path="pirep/:id" element={<PirepDetail />} />
-          <Route path="/career" element={<Career />} />
-          <Route path="/social" element={<SocialHub />} />
-          <Route path="/map" element={<LiveMap />} />
-          <Route path="support" element={<Support />} />
-          <Route path="settings" element={<Settings />} />
-        </Route>
-        <Route
-          path="/admin"
-          element={
-            <ProtectedRoute>
-              <AdminDashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+            {/* Protected Routes */}
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <MainLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Dashboard />} />
+              <Route path="flights" element={<Flights />} />
+              <Route path="booked-flights" element={<BookedFlights />} />
+              <Route path="flight-history" element={<FlightHistory />} />
+              <Route path="flight-summary" element={<FlightSummary />} />
+              <Route path="flight-summary/:id" element={<FlightSummary />} />
+              <Route path="ofp-viewer" element={<OFPViewer />} />
+              <Route path="dispatch" element={<Dispatch />} />
+              <Route path="free-roam" element={<FreeRoam />} />
+              <Route path="pireps" element={<PirepLog />} />
+              <Route path="pirep/:id" element={<PirepDetail />} />
+              <Route path="/career" element={<Career />} />
+              <Route path="/social" element={<SocialHub />} />
+              <Route path="/map" element={<LiveMap />} />
+              <Route path="support" element={<Support />} />
+              <Route path="settings" element={<Settings />} />
+            </Route>
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute>
+                  <AdminDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </div>
+      </div>
     </Router>
   )
 }

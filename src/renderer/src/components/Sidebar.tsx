@@ -8,6 +8,7 @@ const navItems = [
   { name: 'Dashboard', icon: '🏠', path: '/' },
   { name: 'Schedule', icon: '✈️', path: '/flights' },
   { name: 'My Flights', icon: '📋', path: '/booked-flights' },
+  { name: 'Free Roam', icon: '🌍', path: '/free-roam' },
   { name: 'History', icon: '📜', path: '/flight-history' },
   { name: 'Career', icon: '🎖️', path: '/career' },
   { name: 'Community', icon: '👥', path: '/social' },
@@ -38,7 +39,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
     : navItems
 
   return (
-    <aside className="w-52 h-screen bg-white flex flex-col border-r-2 border-[#d63384] text-[#333] shadow-lg">
+    <aside className="w-52 h-full bg-white flex flex-col border-r-2 border-[#d63384] text-[#333] shadow-lg">
       {/* Logo Area - White background for visibility */}
       <div className="flex flex-col items-center justify-center py-5 bg-white border-b-2 border-[#d63384]">
         <img src={logo} alt="Sky Express" className="w-24 h-auto drop-shadow-md mb-2" />

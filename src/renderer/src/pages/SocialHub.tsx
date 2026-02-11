@@ -6,7 +6,7 @@ import { Users, Search, MessageCircle, Heart, UserPlus, X, Clock, Check } from '
 import { SkyLoader } from '../components/ui/SkyLoader'
 
 // Helper Component for the Connection Button
-const ConnectButton = ({ pilot, currentUser, onAction }: { pilot: PilotProfile, currentUser: PilotProfile | null, onAction: (id: string) => void }): React.ReactElement | null => {
+const ConnectButton = ({ pilot, currentUser, onAction, refreshKey }: { pilot: PilotProfile, currentUser: PilotProfile | null, onAction: (id: string) => void, refreshKey: number }): React.ReactElement | null => {
   const [status, setStatus] = useState<'none' | 'pending_sent' | 'pending_received' | 'connected'>('none')
   const [loading, setLoading] = useState(false)
 
@@ -18,7 +18,7 @@ const ConnectButton = ({ pilot, currentUser, onAction }: { pilot: PilotProfile, 
     }
     checkStatus()
     return () => { mounted = false }
-  }, [pilot.id])
+  }, [pilot.id, refreshKey])
 
   const handleClick = async (): Promise<void> => {
     setLoading(true)
@@ -108,6 +108,7 @@ export const SocialHub = (): React.ReactElement => {
   const [showConnected, setShowConnected] = useState(false)
   const [loading, setLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState<PilotProfile | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   // Chat State
   const [selectedPilot, setSelectedPilot] = useState<PilotProfile | null>(null)
@@ -124,6 +125,7 @@ export const SocialHub = (): React.ReactElement => {
       ])
       setPilots(allPilots)
       setFollowing(myFollowing)
+      setRefreshKey((prev) => prev + 1)
     } catch (e) {
       console.error('Failed to load social data', e)
     } finally {
@@ -145,24 +147,26 @@ export const SocialHub = (): React.ReactElement => {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'friend_requests' },
-        (payload) => {
-          console.log('Friend request change detected:', payload)
+        () => {
           loadData(false) // Silent refresh
         }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'social_connections' },
-        (payload) => {
-          console.log('Social connection change detected:', payload)
+        () => {
           loadData(false) // Silent refresh
         }
       )
       .subscribe()
 
+    // Fallback: poll every 15 seconds in case realtime is not enabled
+    const interval = setInterval(() => loadData(false), 15 * 1000)
+
     return () => {
       mounted = false
       supabase.removeChannel(channel)
+      clearInterval(interval)
     }
   }, [])
 
@@ -300,6 +304,7 @@ export const SocialHub = (): React.ReactElement => {
                   <ConnectButton
                     pilot={pilot}
                     currentUser={currentUser}
+                    refreshKey={refreshKey}
                     onAction={() => {
                       // Refresh data immediately without showing full loading spinner if possible, 
                       // or just quick refresh to update 'following' list.
@@ -308,6 +313,7 @@ export const SocialHub = (): React.ReactElement => {
                   />
                   <button
                     onClick={() => handleOpenChat(pilot)}
+                    data-tutorial="chat-button"
                     className="p-1 px-3 bg-gray-100 border border-gray-300 hover:bg-white text-gray-600"
                     title="Send Message"
                   >

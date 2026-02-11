@@ -39,9 +39,9 @@ export const MainLayout: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-slate-50 to-pink-50/30 overflow-hidden font-sans">
+    <div className="flex h-full bg-gradient-to-br from-slate-50 to-pink-50/30 overflow-hidden font-sans">
       {/* Sidebar with high z-index to ensure clickability */}
-      <div className="z-50 relative">
+      <div className="z-50 relative h-full">
         <Sidebar onLogout={handleLogout} />
       </div>
 

@@ -11,6 +11,7 @@ import {
   StopCircle
 } from 'lucide-react'
 import { DataService, BookedFlight, FlightLogEntry } from '../services/dataService'
+import { getAirportByICAO, findNearestAirport } from '../services/airportDatabase'
 import { useNavigate } from 'react-router-dom'
 
 // Helper: Calculate delay indicator
@@ -54,6 +55,18 @@ export const BookedFlights = () => {
   const [hasLoggedLights10k, setHasLoggedLights10k] = useState(false)
   const [hasLoggedGearWarning, setHasLoggedGearWarning] = useState(false)
   const [hasLoggedBank, setHasLoggedBank] = useState(false)
+
+  // ATC Diversion Flag
+  const [isAtcDiversion, setIsAtcDiversion] = useState(false)
+
+  // --- Load Data ---
+  const loadFlights = async () => {
+    setLoading(true)
+    const data = await DataService.getBookedFlights()
+    data.sort((a, b) => new Date(b.bookedAt).getTime() - new Date(a.bookedAt).getTime())
+    setFlights(data)
+    setLoading(false)
+  }
 
   useEffect(() => {
     loadFlights()
@@ -199,13 +212,7 @@ export const BookedFlights = () => {
     return R * c
   }
 
-  const loadFlights = async () => {
-    setLoading(true)
-    const data = await DataService.getBookedFlights()
-    data.sort((a, b) => new Date(b.bookedAt).getTime() - new Date(a.bookedAt).getTime())
-    setFlights(data)
-    setLoading(false)
-  }
+
 
   const handleStartFlight = async (flight: BookedFlight) => {
     await DataService.updateFlightStatus(flight.id, 'in-progress')
@@ -311,11 +318,81 @@ export const BookedFlights = () => {
       startingFuel > 0 ? Math.max(0, startingFuel - (liveData?.fuelQuantity || 0)) : 0
     const fuelUsedKg = Math.round(fuelUsedGallons * 3.08)
 
+    // --- DESTINATION AIRPORT VALIDATION ---
+    let landedAtICAO = flight.arrival // Assume correct until proven otherwise
+    let diversionPenalty = 0
+
+    // Extract alternate airport from SimBrief OFP (if available)
+    const alternateICAO = flight.ofpData?.alternate?.icao_code || null
+
+    // Logic:
+    // 1. ATC Diversion active? -> No penalty, land anywhere.
+    // 2. OFP Data exists (Scheduled OR Free Roam)? -> Validate Destination & Alternate.
+    // 3. No OFP Data? -> Skip validation (fallback for legacy/simple Free Roam).
+    const shoudValidate = !isAtcDiversion && flight.ofpData
+
+    if (shoudValidate && liveData?.latitude && liveData?.longitude) {
+      const destAirport = getAirportByICAO(flight.arrival)
+      const altAirport = alternateICAO ? getAirportByICAO(alternateICAO) : null
+
+      if (destAirport) {
+        const nearest = findNearestAirport(liveData.latitude, liveData.longitude, 5)
+
+        if (nearest && nearest.airport.icao === destAirport.icao) {
+          // ✅ At correct destination
+          landedAtICAO = destAirport.icao
+        } else if (altAirport && nearest && nearest.airport.icao === altAirport.icao) {
+          // ✅ At planned alternate airport — no penalty (ATC directed)
+          landedAtICAO = altAirport.icao
+          setFlightEvents((prev) => [
+            ...prev,
+            {
+              time: new Date().toISOString(),
+              description: `Diverted to alternate ${altAirport.name} (${altAirport.icao}) — no penalty`,
+              penalty: 0,
+              type: 'info' as const
+            }
+          ])
+        } else if (nearest) {
+          // ❌ At a different airport (not destination or alternate)
+          landedAtICAO = nearest.airport.icao
+          diversionPenalty = 15
+          setFlightEvents((prev) => [
+            ...prev,
+            {
+              time: new Date().toISOString(),
+              description: `Landed at wrong airport: ${nearest.airport.name} (${nearest.airport.icao}) — expected ${destAirport.icao}${alternateICAO ? ` or alternate ${alternateICAO}` : ''}`,
+              penalty: 15,
+              type: 'penalty' as const
+            }
+          ])
+        } else {
+          // ❌ Not at any known network airport
+          landedAtICAO = 'UNKNOWN'
+          diversionPenalty = 25
+          setFlightEvents((prev) => [
+            ...prev,
+            {
+              time: new Date().toISOString(),
+              description: `Landed at unknown location (not at destination ${destAirport.icao}${alternateICAO ? ` or alternate ${alternateICAO}` : ''})`,
+              penalty: 25,
+              type: 'penalty' as const
+            }
+          ])
+        }
+      }
+    }
+
+    // Apply diversion penalty to score
+    score = Math.max(0, score - diversionPenalty)
+
     // Calculate earnings based on distance and score
     const distanceNm = distanceTraveled || flight.distance || 100
     const baseEarnings = distanceNm * 2 // $2 per NM
     const bonusMultiplier = score >= 80 ? 1.5 : score >= 60 ? 1.2 : 1.0
-    const earnings = Math.round(baseEarnings * bonusMultiplier)
+    // Diversion reduces earnings: wrong known airport = half, unknown = zero
+    const diversionMultiplier = diversionPenalty === 0 ? 1.0 : diversionPenalty <= 15 ? 0.5 : 0
+    const earnings = Math.round(baseEarnings * bonusMultiplier * diversionMultiplier)
 
     // Create flight log entry with real data
     const logEntry: any = {
@@ -326,6 +403,7 @@ export const BookedFlights = () => {
       departure: flight.departure,
       arrival: flight.arrival,
       aircraft: flight.aircraft,
+      landedAt: landedAtICAO,
       duration: durationMinutes,
       landingRate: Math.round(finalLandingRate),
       score: score,
@@ -595,15 +673,31 @@ export const BookedFlights = () => {
                           </>
                         )}
                         {flight.status === 'in-progress' && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleEndFlight(flight)
-                            }}
-                            className="border border-red-500 bg-red-50 px-2 py-1 text-[10px] hover:bg-red-100 flex items-center gap-1 text-red-700"
-                          >
-                            <StopCircle className="w-3 h-3" /> END
-                          </button>
+                          <>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setIsAtcDiversion(!isAtcDiversion)
+                              }}
+                              data-tutorial="atc-diversion-toggle"
+                              className={`border px-2 py-1 text-[10px] flex items-center gap-1 ${isAtcDiversion
+                                ? 'bg-purple-100 border-purple-500 text-purple-800'
+                                : 'bg-gray-50 border-gray-400 text-gray-600 hover:bg-gray-100'
+                                }`}
+                            >
+                              <Navigation className="w-3 h-3" />
+                              {isAtcDiversion ? 'ATC DIVERT ACTIVE' : 'ATC DIVERT'}
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleEndFlight(flight)
+                              }}
+                              className="border border-red-500 bg-red-50 px-2 py-1 text-[10px] hover:bg-red-100 flex items-center gap-1 text-red-700"
+                            >
+                              <StopCircle className="w-3 h-3" /> END
+                            </button>
+                          </>
                         )}
                         <button
                           onClick={(e) => {

@@ -235,6 +235,7 @@ export const NotificationCenter = (): React.ReactElement => {
         <div className="relative" ref={dropdownRef}>
             <button
                 onClick={handleToggleOpen}
+                data-tutorial="notification-bell"
                 className={`btn-classic flex items-center justify-center w-10 h-10 p-0 rounded-full relative active:bg-gray-300 ${isOpen ? 'bg-gray-300' : ''}`}
                 title="Notifications"
             >

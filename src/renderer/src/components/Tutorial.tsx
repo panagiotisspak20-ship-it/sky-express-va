@@ -16,28 +16,47 @@ const tutorialSteps: TutorialStep[] = [
   {
     title: 'Welcome to Sky Express VA!',
     content:
-      "This is your Dashboard - your home base for all virtual airline operations. Let's take a quick tour!",
+      'This is your Dashboard - your home base for all virtual airline operations. Let\'s take a quick tour!',
     targetSelector: '.dashboard-stats',
     targetPage: '/',
     position: 'bottom',
     tip: 'Your career stats, balance, and recent activity are displayed here.'
   },
   {
+    title: 'Notification Center',
+    content: 'Stay updated with friend requests, direct messages, and support tickets here.',
+    targetSelector: '[data-tutorial="notification-bell"]',
+    targetPage: '/',
+    position: 'bottom'
+  },
+  {
     title: 'Pilot Career',
     content:
-      "Track your rank, flight hours, and earnings here. As you fly more, you'll unlock higher ranks and aircraft.",
+      'Track your rank, flight hours, and earnings here. As you fly more, you\'ll unlock higher ranks and aircraft.',
     targetSelector: '[data-tutorial="career-profile"]',
     targetPage: '/career',
     position: 'bottom'
   },
   {
-    title: 'Import Your Schedule',
-    content:
-      'Go to Flights to import real Sky Express schedules via CSV. Click the IMPORT SCHEDULE button to upload your flight data.',
-    targetSelector: '[data-tutorial="import-btn"]',
-    targetPage: '/flights',
-    position: 'bottom',
-    tip: 'Only flights with GQ prefix (Sky Express) will be accepted.'
+    title: 'Free Roam Mode',
+    content: 'Fly anywhere! Create custom routes here without scheduling restrictions.',
+    targetSelector: '[data-tutorial="sidebar-link-free-roam"]',
+    targetPage: '/career',
+    position: 'right'
+  },
+  {
+    title: 'Plan Your Route',
+    content: 'Enter your Departure and Arrival ICAO codes to start a free flight.',
+    targetSelector: '[data-tutorial="freeroam-dep"]',
+    targetPage: '/free-roam',
+    position: 'bottom'
+  },
+  {
+    title: 'Real Dispatch',
+    content: 'Generate a real SimBrief OFP for your custom flight instantly.',
+    targetSelector: '[data-tutorial="freeroam-generate"]',
+    targetPage: '/free-roam',
+    position: 'top'
   },
   {
     title: 'Filter Schedules',
@@ -51,7 +70,7 @@ const tutorialSteps: TutorialStep[] = [
   {
     title: 'Book a Flight',
     content:
-      'After importing, browse the schedule and click BOOK on any flight to add it to your roster.',
+      'Browse the real-world schedule and click BOOK on any flight to add it to your roster.',
     targetSelector: '.flight-table',
     targetPage: '/flights',
     position: 'top',
@@ -65,6 +84,14 @@ const tutorialSteps: TutorialStep[] = [
     targetPage: '/booked-flights',
     position: 'right',
     tip: 'The app connects to MSFS automatically when you start a flight.'
+  },
+  {
+    title: 'ATC Diversion',
+    content: 'Directed to divert? Toggle this to avoid penalties when landing at a non-scheduled airport.',
+    targetSelector: '[data-tutorial="atc-diversion-toggle"]',
+    targetPage: '/booked-flights',
+    position: 'left',
+    tip: 'Visible only when a flight is in progress.'
   },
   {
     title: 'Flight Details',
@@ -108,6 +135,13 @@ const tutorialSteps: TutorialStep[] = [
     position: 'right'
   },
   {
+    title: 'PIREP Manifests',
+    content: 'View detailed flight reports, landing rates, and event logs for every flight.',
+    targetSelector: '[data-tutorial="pirep-list"]',
+    targetPage: '/pireps',
+    position: 'left'
+  },
+  {
     title: 'Support & Community',
     content: 'Need help? Create support tickets, chat with staff, or browse FAQs here.',
     targetSelector: '[data-tutorial="support-ticket"]',
@@ -116,10 +150,17 @@ const tutorialSteps: TutorialStep[] = [
   },
   {
     title: 'Community & Social',
-    content: "Connect with fellow pilots in our new Social Hub! Find wingmen, see who's online, and chat.",
+    content: 'Connect with fellow pilots in our new Social Hub! Find wingmen, see who\'s online, and chat.',
     targetSelector: '[data-tutorial="sidebar-link-community"]',
     targetPage: '/social',
     position: 'right'
+  },
+  {
+    title: 'Direct Messaging',
+    content: 'Send direct messages to other pilots instantly.',
+    targetSelector: '[data-tutorial="chat-button"]',
+    targetPage: '/social',
+    position: 'left'
   },
   {
     title: 'Pilot Directory',
@@ -130,7 +171,7 @@ const tutorialSteps: TutorialStep[] = [
   },
   {
     title: 'Connections',
-    content: "Use this filter to see only your connected friends. Click 'CONNECT' on any pilot card to follow them.",
+    content: 'Use this filter to see only your connected friends. Click \'CONNECT\' on any pilot card to follow them.',
     targetSelector: '[data-tutorial="connections-filter"]',
     targetPage: '/social',
     position: 'bottom'
@@ -401,10 +442,10 @@ export const TutorialGuide = ({ onNavigate }: TutorialGuideProps) => {
               <div
                 key={idx}
                 className={`w-2 h-2 rounded-full transition-colors ${idx === currentStep
-                    ? 'bg-blue-600'
-                    : idx < currentStep
-                      ? 'bg-blue-300'
-                      : 'bg-gray-300'
+                  ? 'bg-blue-600'
+                  : idx < currentStep
+                    ? 'bg-blue-300'
+                    : 'bg-gray-300'
                   }`}
               />
             ))}

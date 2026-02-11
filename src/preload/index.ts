@@ -29,6 +29,16 @@ const api = {
       electronAPI.ipcRenderer.on('flight-complete', listener)
       return () => electronAPI.ipcRenderer.removeListener('flight-complete', listener)
     },
+    onFlightPenalty: (callback: (data: any) => void) => {
+      const listener = (_: any, data: any) => callback(data)
+      electronAPI.ipcRenderer.on('flight-penalty', listener)
+      return () => electronAPI.ipcRenderer.removeListener('flight-penalty', listener)
+    },
+    onFlightStarted: (callback: (data: any) => void) => {
+      const listener = (_: any, data: any) => callback(data)
+      electronAPI.ipcRenderer.on('flight-started', listener)
+      return () => electronAPI.ipcRenderer.removeListener('flight-started', listener)
+    },
     onError: (callback: (error: string | null) => void) => {
       const listener = (_: any, error: any) => callback(error)
       electronAPI.ipcRenderer.on('msfs-error', listener)
@@ -41,6 +51,8 @@ const api = {
       electronAPI.ipcRenderer.removeAllListeners('msfs-status')
       electronAPI.ipcRenderer.removeAllListeners('landing-report')
       electronAPI.ipcRenderer.removeAllListeners('flight-complete')
+      electronAPI.ipcRenderer.removeAllListeners('flight-penalty')
+      electronAPI.ipcRenderer.removeAllListeners('flight-started')
       electronAPI.ipcRenderer.removeAllListeners('msfs-error')
     }
   },

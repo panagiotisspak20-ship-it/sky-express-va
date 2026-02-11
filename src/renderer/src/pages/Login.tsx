@@ -17,6 +17,17 @@ export const Login = () => {
     try {
       const result = await DataService.login(email, password)
       if (result.success) {
+        // Get profile to check status
+        const profile = await DataService.getProfile()
+        if (profile.status === 'banned' || profile.status === 'suspended') {
+          await DataService.logout()
+          setError(
+            profile.status === 'banned'
+              ? 'ACCOUNT BANNED. Please contact administration.'
+              : 'ACCOUNT SUSPENDED. Please contact administration.'
+          )
+          return
+        }
         navigate('/')
       } else {
         setError(result.error || 'Invalid Email or Password')
