@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plane, Trash2, Download, ArrowUpCircle } from 'lucide-react'
+import { Plane, Trash2, Download, ArrowUpCircle, Sparkles } from 'lucide-react'
 import { DataService, PilotProfile } from '../services/dataService'
 import { WeatherService } from '../services/weatherService'
 import { useNavigate } from 'react-router-dom'
@@ -19,8 +19,6 @@ export const Dashboard = () => {
   const [updateDownloaded, setUpdateDownloaded] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState(0)
   const [isDownloading, setIsDownloading] = useState(false)
-
-
 
   useEffect(() => {
     // Load Profile
@@ -98,100 +96,133 @@ export const Dashboard = () => {
   return (
     <div className="p-4 h-full flex flex-col gap-4 font-tahoma bg-[#f0f0f0]">
       {/* Header Area */}
-      <div className="flex justify-between items-end border-b-2 border-white pb-2 mb-2 shadow-sm">
-        <div>
-          <h1 className="text-xl font-bold text-[#333] uppercase tracking-tighter">
-            Pilot Dashboard
-          </h1>
-          <p className="text-xs text-gray-600">
-            Welcome, <span className="font-bold text-blue-800">{profile?.callsign || 'Pilot'}</span>{' '}
-            (Rank: {profile?.rank})
-          </p>
+      {/* Header Area */}
+      {/* Header Area */}
+      <div className="relative rounded-xl mb-4 shadow-md transition-all duration-300 z-50">
+        {/* Background Layer (Clipped) */}
+        <div className={`absolute inset-0 rounded-xl overflow-hidden -z-10 ${profile?.equipped_background || 'bg-white/50 border-b-2 border-white'}`}>
+          <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 ${profile?.equipped_background ? 'opacity-50' : 'opacity-100'}`} />
+          <div className="absolute -bottom-6 -right-6 opacity-10 rotate-12 pointer-events-none">
+            <Sparkles className={`w-32 h-32 ${profile?.equipped_background ? 'text-white' : 'text-blue-900'}`} />
+          </div>
         </div>
-        <div className="flex gap-2 items-center">
-          {/* Update Available Button */}
-          {updateAvailable && (
-            <button
-              onClick={() => {
-                if (updateDownloaded) {
-                  // @ts-ignore
-                  window.api?.updater?.quitAndInstall()
-                } else if (!isDownloading) {
-                  setIsDownloading(true)
-                  // @ts-ignore
-                  window.api?.updater?.downloadUpdate()
-                }
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold rounded shadow-md transition-all ${updateDownloaded
-                ? 'bg-green-500 hover:bg-green-600 text-white'
-                : isDownloading
-                  ? 'bg-blue-500 text-white cursor-wait'
-                  : 'bg-gradient-to-r from-orange-400 to-pink-500 hover:from-orange-500 hover:to-pink-600 text-white animate-pulse'
-                }`}
-            >
-              {updateDownloaded ? (
-                <><ArrowUpCircle className="w-3.5 h-3.5" /> INSTALL NOW</>
-              ) : isDownloading ? (
-                <><Download className="w-3.5 h-3.5 animate-bounce" /> {Math.round(downloadProgress)}%</>
+
+        {/* Content Container (Visible Overflow) */}
+        <div className="flex justify-between items-center p-4">
+          <div className="flex items-center gap-4">
+            <div className={`w-14 h-14 rounded-xl shadow-md overflow-hidden relative group transition-all duration-300 ${profile?.equipped_frame || 'border-2 border-white'}`}>
+              {profile?.avatar_url ? (
+                <img src={profile.avatar_url} className="w-full h-full object-cover" />
               ) : (
-                <><Download className="w-3.5 h-3.5" /> UPDATE AVAILABLE</>
+                <div className={`w-full h-full flex items-center justify-center ${profile?.equipped_background || 'bg-slate-200'}`}>
+                  <Plane className="w-6 h-6 text-slate-400" />
+                </div>
               )}
+            </div>
+            <div>
+              <h1 className="text-xl font-bold uppercase tracking-tighter leading-none mb-1 drop-shadow-md">
+                Pilot Dashboard
+              </h1>
+              <p className="text-xs font-medium flex items-center gap-1 drop-shadow-sm opacity-90">
+                Welcome, <span className={`font-bold text-lg ${profile?.equipped_color || 'text-blue-800'}`}>
+                  {profile?.callsign || 'Pilot'}
+                </span>
+                <span className="text-[10px] bg-white/20 backdrop-blur-sm px-1.5 py-0.5 rounded border border-white/30 ml-2 shadow-sm">
+                  {profile?.rank || 'Cadet'}
+                </span>
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2 items-center">
+            {/* Update Available Button */}
+            {updateAvailable && (
+              <button
+                onClick={() => {
+                  if (updateDownloaded) {
+                    // @ts-ignore
+                    window.api?.updater?.quitAndInstall()
+                  } else if (!isDownloading) {
+                    setIsDownloading(true)
+                    // @ts-ignore
+                    window.api?.updater?.downloadUpdate()
+                  }
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold rounded shadow-md transition-all ${updateDownloaded
+                  ? 'bg-green-500 hover:bg-green-600 text-white'
+                  : isDownloading
+                    ? 'bg-blue-500 text-white cursor-wait'
+                    : 'bg-gradient-to-r from-orange-400 to-pink-500 hover:from-orange-500 hover:to-pink-600 text-white animate-pulse'
+                  }`}
+              >
+                {updateDownloaded ? (
+                  <>
+                    <ArrowUpCircle className="w-3.5 h-3.5" /> INSTALL NOW
+                  </>
+                ) : isDownloading ? (
+                  <>
+                    <Download className="w-3.5 h-3.5 animate-bounce" /> {Math.round(downloadProgress)}
+                    %
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-3.5 h-3.5" /> UPDATE AVAILABLE
+                  </>
+                )}
+              </button>
+            )}
+
+            <button
+              onClick={() => navigate('/flights')}
+              className="btn-classic flex items-center gap-1 active:bg-gray-300"
+            >
+              <Plane className="w-3 h-3" /> Flight Dispatch
             </button>
-          )}
 
-          <button
-            onClick={() => navigate('/flights')}
-            className="btn-classic flex items-center gap-1 active:bg-gray-300"
-          >
-            <Plane className="w-3 h-3" /> Flight Dispatch
-          </button>
-
-          <NotificationCenter />
+            <NotificationCenter />
+          </div>
         </div>
       </div>
 
       {/* Next Flight Card (Only if booked) */}
-      {
-        nextFlight && (
-          <div className="bg-[#e3f2fd] border-l-4 border-blue-500 p-3 shadow-sm flex justify-between items-center">
-            <div>
-              <h3 className="text-xs font-bold text-blue-800 uppercase tracking-widest mb-1">
-                Next Booked Flight
-              </h3>
-              <div className="flex items-center gap-4">
-                <span className="text-lg font-bold text-[#333]">{nextFlight.flightNumber}</span>
-                <div className="flex flex-col text-xs">
-                  <span className="font-bold text-gray-700">
-                    {nextFlight.departure} ➔ {nextFlight.arrival}
-                  </span>
-                  <span className="text-gray-500">
-                    {nextFlight.aircraft} • Dep: {nextFlight.scheduledDeparture}
-                  </span>
-                </div>
+      {nextFlight && (
+        <div className="bg-[#e3f2fd] border-l-4 border-blue-500 p-3 shadow-sm flex justify-between items-center">
+          <div>
+            <h3 className="text-xs font-bold text-blue-800 uppercase tracking-widest mb-1">
+              Next Booked Flight
+            </h3>
+            <div className="flex items-center gap-4">
+              <span className="text-lg font-bold text-[#333]">{nextFlight.flightNumber}</span>
+              <div className="flex flex-col text-xs">
+                <span className="font-bold text-gray-700">
+                  {nextFlight.departure} ➔ {nextFlight.arrival}
+                </span>
+                <span className="text-gray-500">
+                  {nextFlight.aircraft} • Dep: {nextFlight.scheduledDeparture}
+                </span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                className="btn-classic bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
-                onClick={async () => {
-                  if (confirm('Are you sure you want to cancel this booking?')) {
-                    await DataService.deleteBookedFlight(nextFlight.id)
-                    // Refresh
-                    const flights = await DataService.getBookedFlights()
-                    const booked = flights.filter((f) => f.status === 'booked')
-                    setNextFlight(booked.length > 0 ? booked[0] : null)
-                  }
-                }}
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-              <button className="btn-classic bg-white" onClick={() => navigate('/booked-flights')}>
-                VIEW BOOKINGS
-              </button>
-            </div>
           </div>
-        )
-      }
+          <div className="flex items-center gap-2">
+            <button
+              className="btn-classic bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
+              onClick={async () => {
+                if (confirm('Are you sure you want to cancel this booking?')) {
+                  await DataService.deleteBookedFlight(nextFlight.id)
+                  // Refresh
+                  const flights = await DataService.getBookedFlights()
+                  const booked = flights.filter((f) => f.status === 'booked')
+                  setNextFlight(booked.length > 0 ? booked[0] : null)
+                }
+              }}
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+            <button className="btn-classic bg-white" onClick={() => navigate('/booked-flights')}>
+              VIEW BOOKINGS
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Top Stats Row - "Inset" look */}
       <div className="grid grid-cols-4 gap-2 dashboard-stats">
@@ -264,7 +295,9 @@ export const Dashboard = () => {
                   <span className="font-bold text-[#555]">VISIBILITY:</span>
                   <span className="font-mono text-green-700">
                     {weather?.visibility
-                      ? (weather.visibility >= 10000 ? '10km+' : (weather.visibility / 1000).toFixed(1) + 'km')
+                      ? weather.visibility >= 10000
+                        ? '10km+'
+                        : (weather.visibility / 1000).toFixed(1) + 'km'
                       : '10km+'}
                   </span>
                 </div>
@@ -353,6 +386,6 @@ export const Dashboard = () => {
           </button>
         </div>
       </div>
-    </div >
+    </div>
   )
 }

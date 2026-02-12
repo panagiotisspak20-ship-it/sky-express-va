@@ -16,7 +16,7 @@ const tutorialSteps: TutorialStep[] = [
   {
     title: 'Welcome to Sky Express VA!',
     content:
-      'This is your Dashboard - your home base for all virtual airline operations. Let\'s take a quick tour!',
+      "This is your Dashboard - your home base for all virtual airline operations. Let's take a quick tour!",
     targetSelector: '.dashboard-stats',
     targetPage: '/',
     position: 'bottom',
@@ -32,7 +32,7 @@ const tutorialSteps: TutorialStep[] = [
   {
     title: 'Pilot Career',
     content:
-      'Track your rank, flight hours, and earnings here. As you fly more, you\'ll unlock higher ranks and aircraft.',
+      "Track your rank, flight hours, and earnings here. As you fly more, you'll unlock higher ranks and aircraft.",
     targetSelector: '[data-tutorial="career-profile"]',
     targetPage: '/career',
     position: 'bottom'
@@ -87,7 +87,8 @@ const tutorialSteps: TutorialStep[] = [
   },
   {
     title: 'ATC Diversion',
-    content: 'Directed to divert? Toggle this to avoid penalties when landing at a non-scheduled airport.',
+    content:
+      'Directed to divert? Toggle this to avoid penalties when landing at a non-scheduled airport.',
     targetSelector: '[data-tutorial="atc-diversion-toggle"]',
     targetPage: '/booked-flights',
     position: 'left',
@@ -150,7 +151,8 @@ const tutorialSteps: TutorialStep[] = [
   },
   {
     title: 'Community & Social',
-    content: 'Connect with fellow pilots in our new Social Hub! Find wingmen, see who\'s online, and chat.',
+    content:
+      "Connect with fellow pilots in our new Social Hub! Find wingmen, see who's online, and chat.",
     targetSelector: '[data-tutorial="sidebar-link-community"]',
     targetPage: '/social',
     position: 'right'
@@ -171,7 +173,8 @@ const tutorialSteps: TutorialStep[] = [
   },
   {
     title: 'Connections',
-    content: 'Use this filter to see only your connected friends. Click \'CONNECT\' on any pilot card to follow them.',
+    content:
+      "Use this filter to see only your connected friends. Click 'CONNECT' on any pilot card to follow them.",
     targetSelector: '[data-tutorial="connections-filter"]',
     targetPage: '/social',
     position: 'bottom'
@@ -441,12 +444,13 @@ export const TutorialGuide = ({ onNavigate }: TutorialGuideProps) => {
             {tutorialSteps.map((_, idx) => (
               <div
                 key={idx}
-                className={`w-2 h-2 rounded-full transition-colors ${idx === currentStep
-                  ? 'bg-blue-600'
-                  : idx < currentStep
-                    ? 'bg-blue-300'
-                    : 'bg-gray-300'
-                  }`}
+                className={`w-2 h-2 rounded-full transition-colors ${
+                  idx === currentStep
+                    ? 'bg-blue-600'
+                    : idx < currentStep
+                      ? 'bg-blue-300'
+                      : 'bg-gray-300'
+                }`}
               />
             ))}
           </div>
@@ -456,8 +460,9 @@ export const TutorialGuide = ({ onNavigate }: TutorialGuideProps) => {
             <button
               onClick={handleBack}
               disabled={isFirstStep}
-              className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded transition-colors ${isFirstStep ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100'
-                }`}
+              className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded transition-colors ${
+                isFirstStep ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100'
+              }`}
             >
               <ChevronLeft className="w-4 h-4" /> Back
             </button>

@@ -61,7 +61,8 @@ const api = {
     getMetar: (icao: string) => electronAPI.ipcRenderer.invoke('get-metar', icao)
   },
   airlabs: {
-    getSchedules: (airlineIata: string, apiKey: string) => electronAPI.ipcRenderer.invoke('fetch-airlabs-schedules', airlineIata, apiKey) 
+    getSchedules: (airlineIata: string, apiKey: string) =>
+      electronAPI.ipcRenderer.invoke('fetch-airlabs-schedules', airlineIata, apiKey)
   },
   updater: {
     getAppVersion: () => electronAPI.ipcRenderer.invoke('get-app-version'),

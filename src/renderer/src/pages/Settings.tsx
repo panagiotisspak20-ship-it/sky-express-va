@@ -8,7 +8,10 @@ import {
   Download,
   Power,
   MessageCircle,
-  Globe
+  Globe,
+  User,
+  Upload,
+  Sparkles
 } from 'lucide-react'
 import { DataService, PilotProfile } from '../services/dataService'
 import { SkyLoader } from '../components/ui/SkyLoader'
@@ -39,7 +42,8 @@ export const Settings = () => {
     // @ts-ignore (Accessing exposed updater API)
     if (window.api && window.api.updater && window.api.updater.getAppVersion) {
       // @ts-ignore
-      window.api.updater.getAppVersion()
+      window.api.updater
+        .getAppVersion()
         .then((version: string) => setAppVersion(version))
         .catch((err: any) => console.error('Failed to get app version:', err))
     }
@@ -137,7 +141,9 @@ export const Settings = () => {
         setTimeout(() => setSaved(false), 3000)
       } catch (error: any) {
         console.error('Failed to update settings:', error)
-        alert(`Failed to save settings: ${error.message}\n\nPlease ensure you have run the database update script 'fix_missing_profile_columns.sql'.`)
+        alert(
+          `Failed to save settings: ${error.message}\n\nPlease ensure you have run the database update script 'fix_missing_profile_columns.sql'.`
+        )
       }
     }
   }
@@ -243,9 +249,14 @@ export const Settings = () => {
 
             {updateStatus === 'downloading' && (
               <div className="flex flex-col gap-1 w-64">
-                <span className="text-[10px] text-blue-600 font-bold">Downloading Update... {downloadProgress.toFixed(0)}%</span>
+                <span className="text-[10px] text-blue-600 font-bold">
+                  Downloading Update... {downloadProgress.toFixed(0)}%
+                </span>
                 <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden border border-gray-400">
-                  <div className="bg-blue-500 h-full transition-all duration-300" style={{ width: `${downloadProgress}%` }}></div>
+                  <div
+                    className="bg-blue-500 h-full transition-all duration-300"
+                    style={{ width: `${downloadProgress}%` }}
+                  ></div>
                 </div>
               </div>
             )}
@@ -264,20 +275,31 @@ export const Settings = () => {
           </div>
 
           <div>
-            {(updateStatus === 'idle' || updateStatus === 'not-available' || updateStatus === 'error') && (
-              <button onClick={handleCheckForUpdates} className="btn-classic flex items-center gap-1 text-xs px-3 py-1">
-                <RefreshCw className="w-3 h-3" /> CHECK FOR UPDATES
-              </button>
-            )}
+            {(updateStatus === 'idle' ||
+              updateStatus === 'not-available' ||
+              updateStatus === 'error') && (
+                <button
+                  onClick={handleCheckForUpdates}
+                  className="btn-classic flex items-center gap-1 text-xs px-3 py-1"
+                >
+                  <RefreshCw className="w-3 h-3" /> CHECK FOR UPDATES
+                </button>
+              )}
 
             {updateStatus === 'available' && (
-              <button onClick={handleDownloadUpdate} className="btn-classic flex items-center gap-1 text-xs px-3 py-1">
+              <button
+                onClick={handleDownloadUpdate}
+                className="btn-classic flex items-center gap-1 text-xs px-3 py-1"
+              >
                 <Download className="w-3 h-3" /> DOWNLOAD UPDATE
               </button>
             )}
 
             {updateStatus === 'downloaded' && (
-              <button onClick={handleQuitAndInstall} className="btn-classic flex items-center gap-1 text-xs px-3 py-1 text-green-700">
+              <button
+                onClick={handleQuitAndInstall}
+                className="btn-classic flex items-center gap-1 text-xs px-3 py-1 text-green-700"
+              >
                 <Power className="w-3 h-3" /> RESTART & INSTALL
               </button>
             )}
@@ -292,48 +314,61 @@ export const Settings = () => {
         </h2>
 
         <div className="flex gap-4 items-start">
-          {/* Photo Preview */}
-          <div className="flex flex-col gap-2 items-center">
-            <div className="w-32 h-32 border border-gray-400 bg-gray-200 flex items-center justify-center shadow-inner overflow-hidden">
-              {profile.avatar_url ? (
-                <img
-                  src={profile.avatar_url}
-                  alt="Profile"
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <span className="text-xs text-gray-500 text-center">
-                  NO PHOTO
-                  <br />
-                  AVAILABLE
-                </span>
-              )}
+          {/* Photo Preview Card */}
+          <div className={`flex items-center gap-6 p-4 rounded-lg shadow-inner relative overflow-hidden transition-all duration-300 ${profile?.equipped_background || 'bg-gray-100'}`}>
+            <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 ${profile?.equipped_background ? 'opacity-50' : 'opacity-100'}`} />
+            <div className="relative group">
+              <div className={`w-24 h-24 rounded-xl shadow-lg overflow-hidden relative transition-all duration-300 ${profile?.equipped_frame || 'border-4 border-white'}`}>
+                {profile?.avatar_url ? (
+                  <img
+                    src={profile.avatar_url}
+                    alt="Profile"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-slate-200 flex items-center justify-center">
+                    <User className="w-12 h-12 text-slate-400" />
+                  </div>
+                )}
+
+                {/* Edit Overlay */}
+                <label className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                  <Upload className="w-6 h-6 text-white mb-1" />
+                  <span className="text-[10px] text-white font-bold uppercase">Change</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handlePhotoUpload}
+                    disabled={loading}
+                  />
+                </label>
+              </div>
+
+              {/* Rank Badge */}
+              <div className="absolute -bottom-2 -right-2 bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full border-2 border-white shadow-sm">
+                {profile?.rank || 'Cadet'}
+              </div>
             </div>
-            <label className="btn-classic text-[10px] px-2 py-1 cursor-pointer flex flex-col items-center">
-              <span>UPLOAD NEW PHOTO</span>
-              <span className="text-[9px] font-normal text-gray-500 normal-case">(Auto-saves)</span>
-              <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
-            </label>
+            <div className="flex flex-col">
+              <span className="text-xs font-bold uppercase opacity-70">Preview</span>
+              <span className="text-[9px] opacity-60">Callsign cannot be changed.</span>
+            </div>
+
+            <div className="absolute -bottom-6 -right-6 opacity-10 rotate-12 pointer-events-none">
+              <Sparkles className={`w-32 h-32 ${profile?.equipped_background ? 'text-white' : 'text-blue-900'}`} />
+            </div>
           </div>
 
-          <div className="flex-1 grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-bold text-gray-600">CALLSIGN</label>
-              <div className="inset-box p-2 font-mono font-bold bg-gray-100 text-gray-500">
-                {profile.callsign}
-              </div>
-              <span className="text-[9px] text-gray-400">Callsign cannot be changed.</span>
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-bold text-gray-600">RANK</label>
-              <div className="inset-box p-2 font-bold bg-gray-100 text-gray-500">
-                {profile.rank}
-              </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-bold text-gray-600">RANK</label>
+            <div className="inset-box p-2 font-bold bg-gray-100 text-gray-500">
+              {profile.rank}
             </div>
           </div>
         </div>
       </div>
+
 
       <div className="flex flex-col lg:flex-row gap-4 w-full">
         {/* Integrations & Configuration */}
@@ -375,7 +410,8 @@ export const Settings = () => {
               </div>
 
               <p className="text-[10px] text-gray-500 mt-2 italic">
-                These details are required to generate Operational Flight Plans (OFP) and Dispatch flights.
+                These details are required to generate Operational Flight Plans (OFP) and Dispatch
+                flights.
               </p>
             </div>
 
@@ -462,6 +498,6 @@ export const Settings = () => {
           </div>
         </div>
       </div>
-    </div>
+    </div >
   )
 }

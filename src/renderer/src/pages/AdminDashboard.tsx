@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { DataService, PilotProfile, SystemAnnouncement } from '../services/dataService'
+import { supabase } from '../services/supabase'
 import { useNavigate } from 'react-router-dom'
 import { Sidebar } from '../components/Sidebar'
 import {
@@ -62,8 +63,6 @@ export default function AdminDashboard(): React.ReactElement {
   const [announcements, setAnnouncements] = useState<SystemAnnouncement[]>([])
   const [newAnnouncement, setNewAnnouncement] = useState('')
 
-
-
   // Check admin status
   const checkAdmin = useCallback(async (): Promise<void> => {
     const profile = await DataService.getProfile()
@@ -108,12 +107,58 @@ export default function AdminDashboard(): React.ReactElement {
     }
   }, [])
 
+  // Refs for stable access in callbacks
+  const selectedTicketRef = useRef<SupportTicket | null>(null)
+
+  useEffect(() => {
+    selectedTicketRef.current = selectedTicket
+  }, [selectedTicket])
+
   useEffect(() => {
     checkAdmin()
     fetchTickets()
     fetchPilots()
     fetchAnnouncements()
   }, [checkAdmin, fetchTickets, fetchPilots, fetchAnnouncements])
+
+  // Realtime Subscriptions (Stable)
+  useEffect(() => {
+    console.log('🔌 Initializing Admin Realtime Subscription...')
+    const channel = supabase
+      .channel('admin_support_updates')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'support_tickets' },
+        (payload) => {
+          console.log('🎫 Ticket Update:', payload)
+          fetchTickets()
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'support_messages' },
+        (payload) => {
+          console.log('💬 Message Update:', payload)
+          // Check if we are viewing this ticket using the Ref
+          const currentTicket = selectedTicketRef.current
+          // @ts-ignore
+          if (currentTicket?.id === payload.new.ticket_id) {
+            console.log('  -> Refreshing chat for active ticket')
+            // @ts-ignore
+            fetchMessages(payload.new.ticket_id)
+          }
+          fetchTickets()
+        }
+      )
+      .subscribe((status) => {
+        console.log('🔌 Subscription Status:', status)
+      })
+
+    return () => {
+      console.log('🔌 Cleaning up subscription...')
+      supabase.removeChannel(channel)
+    }
+  }, [fetchTickets]) // Removed selectedTicket from dependency
 
   const fetchMessages = async (ticketId: string): Promise<void> => {
     setLoadingMessages(true)
@@ -254,9 +299,7 @@ export default function AdminDashboard(): React.ReactElement {
 
   const handleBanUser = async (pilot: PilotProfile) => {
     if (
-      !confirm(
-        `Are you sure you want to BAN ${pilot.callsign}? They will not be able to log in.`
-      )
+      !confirm(`Are you sure you want to BAN ${pilot.callsign}? They will not be able to log in.`)
     )
       return
     try {
@@ -322,21 +365,27 @@ export default function AdminDashboard(): React.ReactElement {
           <div className="flex gap-2">
             <button
               onClick={() => setActiveTab('support')}
-              className={`px-4 py-2 text-xs font-bold uppercase rounded transition-colors flex items-center gap-2 ${activeTab === 'support' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+              className={`px-4 py-2 text-xs font-bold uppercase rounded transition-colors flex items-center gap-2 ${activeTab === 'support'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
                 }`}
             >
               <MessageSquare className="w-4 h-4" /> Support
             </button>
             <button
               onClick={() => setActiveTab('users')}
-              className={`px-4 py-2 text-xs font-bold uppercase rounded transition-colors flex items-center gap-2 ${activeTab === 'users' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+              className={`px-4 py-2 text-xs font-bold uppercase rounded transition-colors flex items-center gap-2 ${activeTab === 'users'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
                 }`}
             >
               <Users className="w-4 h-4" /> User Mgmt
             </button>
             <button
               onClick={() => setActiveTab('announcements')}
-              className={`px-4 py-2 text-xs font-bold uppercase rounded transition-colors flex items-center gap-2 ${activeTab === 'announcements' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+              className={`px-4 py-2 text-xs font-bold uppercase rounded transition-colors flex items-center gap-2 ${activeTab === 'announcements'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
                 }`}
             >
               <Megaphone className="w-4 h-4" /> Announcements
@@ -356,7 +405,10 @@ export default function AdminDashboard(): React.ReactElement {
                     <MessageSquare className="w-3 h-3" />
                     INBOX ({tickets.filter((t) => t.status !== 'resolved').length})
                   </span>
-                  <button onClick={fetchTickets} className="text-[10px] text-blue-800 hover:underline">
+                  <button
+                    onClick={fetchTickets}
+                    className="text-[10px] text-blue-800 hover:underline"
+                  >
                     [REFRESH]
                   </button>
                 </div>
@@ -400,7 +452,9 @@ export default function AdminDashboard(): React.ReactElement {
 
                         <div className="flex items-center gap-1 text-[10px] text-gray-600">
                           <User className="w-3 h-3 text-gray-400 group-hover:text-blue-600" />
-                          <span className="font-mono">{ticket.profiles?.callsign || 'Unknown'}</span>
+                          <span className="font-mono">
+                            {ticket.profiles?.callsign || 'Unknown'}
+                          </span>
                         </div>
                       </button>
                     ))}
@@ -421,7 +475,9 @@ export default function AdminDashboard(): React.ReactElement {
                           </span>
                           <span>reported:</span>
                         </div>
-                        <h2 className="text-lg font-bold text-blue-900">{selectedTicket.subject}</h2>
+                        <h2 className="text-lg font-bold text-blue-900">
+                          {selectedTicket.subject}
+                        </h2>
                       </div>
                       <div className="flex items-center gap-2">
                         {selectedTicket.status !== 'resolved' && (
@@ -499,8 +555,8 @@ export default function AdminDashboard(): React.ReactElement {
                     <div className="p-3 bg-white border-t border-gray-200 shrink-0">
                       {selectedTicket.status === 'resolved' ? (
                         <div className="bg-gray-100 border border-gray-300 p-2 text-center text-xs text-gray-500 italic flex items-center justify-center gap-2">
-                          <Lock className="w-3 h-3" /> This ticket is resolved. Re-open functionality
-                          not yet implemented.
+                          <Lock className="w-3 h-3" /> This ticket is resolved. Re-open
+                          functionality not yet implemented.
                         </div>
                       ) : (
                         <div className="flex flex-col gap-2">
@@ -553,7 +609,10 @@ export default function AdminDashboard(): React.ReactElement {
                   value={userSearch}
                   onChange={(e) => setUserSearch(e.target.value)}
                 />
-                <button onClick={fetchPilots} className="btn-classic px-4 py-2 text-xs flex items-center gap-1">
+                <button
+                  onClick={fetchPilots}
+                  className="btn-classic px-4 py-2 text-xs flex items-center gap-1"
+                >
                   <RefreshCw className="w-3 h-3" /> Refresh List
                 </button>
               </div>
@@ -685,10 +744,15 @@ export default function AdminDashboard(): React.ReactElement {
                           className="bg-white border border-l-4 border-l-blue-500 shadow-sm p-4 rounded flex justify-between items-start"
                         >
                           <div>
-                            <p className="text-gray-800 font-medium whitespace-pre-wrap">{a.message}</p>
+                            <p className="text-gray-800 font-medium whitespace-pre-wrap">
+                              {a.message}
+                            </p>
                             <div className="text-[10px] text-gray-400 mt-2 flex gap-3">
                               <span>
-                                Posted by: <span className="font-bold text-gray-600">{a.author?.callsign}</span>
+                                Posted by:{' '}
+                                <span className="font-bold text-gray-600">
+                                  {a.author?.callsign}
+                                </span>
                               </span>
                               <span>{new Date(a.created_at).toLocaleString()}</span>
                             </div>
@@ -810,7 +874,6 @@ export default function AdminDashboard(): React.ReactElement {
           </div>
         )}
 
-
         {/* Sync Section */}
         <div className="p-4 border-t border-white bg-gray-50">
           <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2 mb-2">
@@ -835,8 +898,12 @@ export default function AdminDashboard(): React.ReactElement {
             </button>
           </div>
           {syncResult && (
-            <div className={`mt-2 p-2 rounded text-[10px] font-mono ${syncResult.includes('Error') ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
-              }`}>
+            <div
+              className={`mt-2 p-2 rounded text-[10px] font-mono ${syncResult.includes('Error')
+                ? 'bg-red-100 text-red-700'
+                : 'bg-green-100 text-green-700'
+                }`}
+            >
               {syncResult}
             </div>
           )}

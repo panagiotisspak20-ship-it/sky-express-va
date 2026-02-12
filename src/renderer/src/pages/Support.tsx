@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
   Mail,
   ChevronDown,
@@ -184,7 +185,13 @@ const CreateTicketForm = ({ onSuccess }: { onSuccess: () => void }): React.React
   )
 }
 
-const ChatView = ({ ticket, onDelete }: { ticket: Ticket; onDelete: () => void }): React.ReactElement => {
+const ChatView = ({
+  ticket,
+  onDelete
+}: {
+  ticket: Ticket
+  onDelete: () => void
+}): React.ReactElement => {
   const [messages, setMessages] = useState<Message[]>([])
   const [replyText, setReplyText] = useState('')
   const [sending, setSending] = useState(false)
@@ -369,6 +376,20 @@ export const Support = (): React.ReactElement => {
   useEffect(() => {
     loadTickets()
   }, [loadTickets])
+
+  // Deep Link Handling
+  const location = useLocation()
+  useEffect(() => {
+    const state = location.state as { openTicketId?: string }
+    if (state?.openTicketId && tickets.length > 0) {
+      const ticket = tickets.find((t) => t.id === state.openTicketId)
+      if (ticket) {
+        handleSelectTicket(ticket)
+        // Clear state
+        window.history.replaceState({}, '')
+      }
+    }
+  }, [location.state, tickets])
 
   // Handlers
   const handleCreateSuccess = (): void => {

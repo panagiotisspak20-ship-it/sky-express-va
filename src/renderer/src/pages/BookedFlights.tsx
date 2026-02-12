@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Calendar,
   Trash2,
@@ -24,6 +24,10 @@ export const BookedFlights = () => {
   const [flights, setFlights] = useState<BookedFlight[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedFlight, setSelectedFlight] = useState<BookedFlight | null>(null)
+
+  // Refs for Live Data (avoiding closure staleness in listeners)
+  const activeFlightRef = useRef<BookedFlight | null>(null)
+  const lastReportTime = useRef(0)
 
   // Live tracking state
   const [liveData, setLiveData] = useState<any>(null)
@@ -163,6 +167,26 @@ export const BookedFlights = () => {
             setDistanceTraveled((prev) => prev + dist)
           }
           setLastPosition({ lat: data.latitude, lng: data.longitude })
+
+          // Report Position to Live Map (Throttle: 30s)
+          if (Date.now() - lastReportTime.current > 30000 && data.latitude && data.longitude) {
+            lastReportTime.current = Date.now()
+
+            const currentFlight = activeFlightRef.current
+
+            DataService.reportPosition({
+              latitude: data.latitude,
+              longitude: data.longitude,
+              altitude: Math.round(data.altitude),
+              speed: Math.round(data.speed),
+              heading: Math.round(data.heading),
+              flight_number: currentFlight?.flightNumber || 'VFR',
+              aircraft: currentFlight?.aircraft || 'Unknown',
+              departure: currentFlight?.departure || '???',
+              arrival: currentFlight?.arrival || '???',
+              phase: data.isOnGround ? 'Ground' : 'Enroute'
+            })
+          }
         }
       })
 
@@ -212,10 +236,9 @@ export const BookedFlights = () => {
     return R * c
   }
 
-
-
   const handleStartFlight = async (flight: BookedFlight) => {
     await DataService.updateFlightStatus(flight.id, 'in-progress')
+    activeFlightRef.current = flight
     setFlightStartTime(new Date())
     setBlockOffTime(new Date()) // Pushback time
     setDistanceTraveled(0)
@@ -283,7 +306,6 @@ export const BookedFlights = () => {
     // Assuming flight.scheduledDeparture is "HH:MM" local. We need to parse it relative to the flight date.
     // For simplicity, we just look at the ISO timestamps if available or basic minute diff
     let otpStatus: 'On Time' | 'Delayed' | 'Early' = 'On Time'
-
 
     // Use scheduledDepartureZulu if available as it's more reliable
     const schedTimeParts = (flight.scheduledDepartureZulu || flight.scheduledDeparture).split(':')
@@ -431,6 +453,7 @@ export const BookedFlights = () => {
 
     // Delete the booked flight
     await DataService.deleteBookedFlight(flight.id)
+    activeFlightRef.current = null
 
     // Navigate to flight summary with the data
     navigate('/flight-summary', { state: { flightData: logEntry } })

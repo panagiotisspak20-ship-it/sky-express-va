@@ -1,13 +1,26 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
+import { useLocation } from 'react-router-dom'
 import { DataService, PilotProfile, DirectMessage } from '../services/dataService'
 import { supabase } from '../services/supabase'
-import { Users, Search, MessageCircle, Heart, UserPlus, X, Clock, Check } from 'lucide-react'
+import { Users, Search, MessageCircle, Heart, UserPlus, X, Clock, Check, Sparkles } from 'lucide-react'
 import { SkyLoader } from '../components/ui/SkyLoader'
 
 // Helper Component for the Connection Button
-const ConnectButton = ({ pilot, currentUser, onAction, refreshKey }: { pilot: PilotProfile, currentUser: PilotProfile | null, onAction: (id: string) => void, refreshKey: number }): React.ReactElement | null => {
-  const [status, setStatus] = useState<'none' | 'pending_sent' | 'pending_received' | 'connected'>('none')
+const ConnectButton = ({
+  pilot,
+  currentUser,
+  onAction,
+  refreshKey
+}: {
+  pilot: PilotProfile
+  currentUser: PilotProfile | null
+  onAction: (id: string) => void
+  refreshKey: number
+}): React.ReactElement | null => {
+  const [status, setStatus] = useState<'none' | 'pending_sent' | 'pending_received' | 'connected'>(
+    'none'
+  )
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -17,7 +30,9 @@ const ConnectButton = ({ pilot, currentUser, onAction, refreshKey }: { pilot: Pi
       if (mounted) setStatus(s)
     }
     checkStatus()
-    return () => { mounted = false }
+    return () => {
+      mounted = false
+    }
   }, [pilot.id, refreshKey])
 
   const handleClick = async (): Promise<void> => {
@@ -47,7 +62,9 @@ const ConnectButton = ({ pilot, currentUser, onAction, refreshKey }: { pilot: Pi
       }
     } catch (e) {
       console.error(e)
-      alert('Failed to connect. Please check if the database is set up correctly (friend_requests table).')
+      alert(
+        'Failed to connect. Please check if the database is set up correctly (friend_requests table).'
+      )
     }
     setLoading(false)
   }
@@ -86,14 +103,22 @@ const ConnectButton = ({ pilot, currentUser, onAction, refreshKey }: { pilot: Pi
 
   if (status === 'pending_received') {
     return (
-      <button onClick={handleClick} disabled={loading} className="flex-1 py-1 text-[10px] font-bold border border-green-500 bg-green-50 text-green-700 hover:bg-green-100 flex items-center justify-center gap-1 transition-colors">
+      <button
+        onClick={handleClick}
+        disabled={loading}
+        className="flex-1 py-1 text-[10px] font-bold border border-green-500 bg-green-50 text-green-700 hover:bg-green-100 flex items-center justify-center gap-1 transition-colors"
+      >
         <Check className="w-3 h-3" /> ACCEPT
       </button>
     )
   }
 
   return (
-    <button onClick={handleClick} disabled={loading} className="flex-1 py-1 text-[10px] font-bold border border-gray-300 bg-gray-100 hover:bg-white text-gray-600 flex items-center justify-center gap-1 transition-colors">
+    <button
+      onClick={handleClick}
+      disabled={loading}
+      className="flex-1 py-1 text-[10px] font-bold border border-gray-300 bg-gray-100 hover:bg-white text-gray-600 flex items-center justify-center gap-1 transition-colors"
+    >
       <UserPlus className="w-3 h-3" /> CONNECT
     </button>
   )
@@ -137,27 +162,19 @@ export const SocialHub = (): React.ReactElement => {
   useEffect(() => {
     let mounted = true
     loadData()
-    DataService.getProfile().then(p => {
+    DataService.getProfile().then((p) => {
       if (mounted) setCurrentUser(p)
     })
 
     // Subscribe to changes in friend_requests and social_connections
     const channel = supabase
       .channel('social_hub_updates')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'friend_requests' },
-        () => {
-          loadData(false) // Silent refresh
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'social_connections' },
-        () => {
-          loadData(false) // Silent refresh
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'friend_requests' }, () => {
+        loadData(false) // Silent refresh
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'social_connections' }, () => {
+        loadData(false) // Silent refresh
+      })
       .subscribe()
 
     // Fallback: poll every 15 seconds in case realtime is not enabled
@@ -169,6 +186,20 @@ export const SocialHub = (): React.ReactElement => {
       clearInterval(interval)
     }
   }, [])
+
+  // Deep Link Handling
+  const location = useLocation()
+  useEffect(() => {
+    const state = location.state as { openChatWith?: string; view?: string }
+    if (state?.openChatWith && pilots.length > 0) {
+      const pilot = pilots.find((p) => p.id === state.openChatWith)
+      if (pilot) {
+        handleOpenChat(pilot)
+        // Clear state to prevent re-opening on refresh (optional, but good practice)
+        window.history.replaceState({}, '')
+      }
+    }
+  }, [location.state, pilots])
 
   // Chat Logic
   useEffect(() => {
@@ -266,24 +297,27 @@ export const SocialHub = (): React.ReactElement => {
               <motion.div
                 layoutId={pilot.id}
                 key={pilot.id}
-                className={`legacy-panel p-2 flex flex-col gap-2 ${pilot.id === currentUser?.id ? 'border-blue-300 bg-blue-50' : ''}`}
+                className={`legacy-panel p-3 flex flex-col gap-2 rounded-xl transition-all duration-300 relative overflow-hidden ${pilot.equipped_background ? `${pilot.equipped_background} bg-cover border-none shadow-lg text-white` : pilot.id === currentUser?.id ? 'border-blue-300 bg-blue-50' : ''}`}
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
               >
+                <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 ${pilot.equipped_background ? 'opacity-50' : 'opacity-100'}`} />
                 <div className="flex gap-3">
                   {/* Avatar */}
-                  <div className="w-16 h-16 bg-gray-300 border border-gray-400 shadow-inner flex shrink-0 items-center justify-center overflow-hidden">
+                  <div className={`w-16 h-16 rounded-xl shadow-md overflow-hidden relative group shrink-0 ${pilot.equipped_frame || 'border-2 border-white'}`}>
                     {pilot.avatar_url ? (
                       <img src={pilot.avatar_url} className="w-full h-full object-cover" />
                     ) : (
-                      <Users className="w-8 h-8 text-gray-500 opacity-50" />
+                      <div className={`w-full h-full flex items-center justify-center ${pilot.equipped_background || 'bg-slate-200'}`}>
+                        <Users className="w-8 h-8 text-slate-400 opacity-50" />
+                      </div>
                     )}
                   </div>
 
                   {/* Info */}
                   <div className="flex-1 min-w-0 flex flex-col justify-between">
                     <div>
-                      <div className="text-sm font-bold text-blue-900 truncate">
+                      <div className={`text-sm font-bold truncate ${pilot.equipped_color || 'text-blue-900'}`}>
                         {pilot.callsign}
                       </div>
                       <div className="text-[10px] text-gray-600 font-bold uppercase">
@@ -306,7 +340,7 @@ export const SocialHub = (): React.ReactElement => {
                     currentUser={currentUser}
                     refreshKey={refreshKey}
                     onAction={() => {
-                      // Refresh data immediately without showing full loading spinner if possible, 
+                      // Refresh data immediately without showing full loading spinner if possible,
                       // or just quick refresh to update 'following' list.
                       loadData(false)
                     }}
@@ -320,6 +354,10 @@ export const SocialHub = (): React.ReactElement => {
                     <MessageCircle className="w-4 h-4" />
                   </button>
                 </div>
+
+                <div className="absolute -bottom-6 -right-6 opacity-10 rotate-12 pointer-events-none">
+                  <Sparkles className={`w-32 h-32 ${pilot.equipped_background ? 'text-white' : 'text-blue-900'}`} />
+                </div>
               </motion.div>
             ))}
           </div>
@@ -327,85 +365,83 @@ export const SocialHub = (): React.ReactElement => {
       </div>
 
       {/* RIGHT: CHAT PANE (SLIDE IN) */}
-      {
-        chatOpen && selectedPilot && (
-          <motion.div
-            initial={{ x: 300, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: 300, opacity: 0 }}
-            className="w-96 border-l-2 border-white bg-[#e6e6e6] shadow-xl flex flex-col"
-          >
-            {/* Chat Header */}
-            <div className="p-3 bg-blue-900 text-white font-bold flex justify-between items-center shadow-md">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 bg-white rounded-full overflow-hidden">
-                  {selectedPilot.avatar_url ? (
-                    <img src={selectedPilot.avatar_url} className="w-full h-full object-cover" />
-                  ) : null}
-                </div>
-                <div className="flex flex-col leading-none">
-                  <span className="text-xs uppercase opacity-75">Chat with</span>
-                  <span>{selectedPilot.callsign}</span>
-                </div>
+      {chatOpen && selectedPilot && (
+        <motion.div
+          initial={{ x: 300, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          exit={{ x: 300, opacity: 0 }}
+          className="w-96 border-l-2 border-white bg-[#e6e6e6] shadow-xl flex flex-col"
+        >
+          {/* Chat Header */}
+          <div className="p-3 bg-blue-900 text-white font-bold flex justify-between items-center shadow-md">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 bg-white rounded-full overflow-hidden">
+                {selectedPilot.avatar_url ? (
+                  <img src={selectedPilot.avatar_url} className="w-full h-full object-cover" />
+                ) : null}
               </div>
-              <button onClick={() => setChatOpen(false)} className="hover:bg-blue-800 p-1 rounded">
-                <X className="w-4 h-4" />
-              </button>
+              <div className="flex flex-col leading-none">
+                <span className="text-xs uppercase opacity-75">Chat with</span>
+                <span>{selectedPilot.callsign}</span>
+              </div>
             </div>
+            <button onClick={() => setChatOpen(false)} className="hover:bg-blue-800 p-1 rounded">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
 
-            {/* Messages Area */}
-            <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-3 inset-box bg-white m-2 mb-0">
-              {messages.length === 0 && (
-                <div className="text-center text-xs text-gray-400 mt-10 italic">
-                  No messages yet. Start the conversation!
-                </div>
-              )}
-              {messages.map((msg) => {
-                const isMe = msg.sender_id === currentUser?.id
-                return (
-                  <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                    <div
-                      className={`p-2 rounded max-w-[80%] text-xs shadow-sm text-balance
+          {/* Messages Area */}
+          <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-3 inset-box bg-white m-2 mb-0">
+            {messages.length === 0 && (
+              <div className="text-center text-xs text-gray-400 mt-10 italic">
+                No messages yet. Start the conversation!
+              </div>
+            )}
+            {messages.map((msg) => {
+              const isMe = msg.sender_id === currentUser?.id
+              return (
+                <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                  <div
+                    className={`p-2 rounded max-w-[80%] text-xs shadow-sm text-balance
                        ${isMe
-                          ? 'bg-blue-100 border border-blue-200 text-blue-900 rounded-br-none'
-                          : 'bg-gray-100 border border-gray-200 text-gray-800 rounded-bl-none'
-                        }
+                        ? 'bg-blue-100 border border-blue-200 text-blue-900 rounded-br-none'
+                        : 'bg-gray-100 border border-gray-200 text-gray-800 rounded-bl-none'
+                      }
                      `}
-                    >
-                      {msg.message}
-                    </div>
-                    <span className="text-[9px] text-gray-400 mt-0.5">
-                      {new Date(msg.created_at).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </span>
+                  >
+                    {msg.message}
                   </div>
-                )
-              })}
-            </div>
+                  <span className="text-[9px] text-gray-400 mt-0.5">
+                    {new Date(msg.created_at).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
 
-            {/* Input Area */}
-            <form onSubmit={handleSendMessage} className="p-2 flex gap-2">
-              <input
-                type="text"
-                className="flex-1 p-2 border border-gray-400 text-xs shadow-inner"
-                placeholder="Type a message..."
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                autoFocus
-              />
-              <button
-                type="submit"
-                disabled={!newMessage.trim()}
-                className="btn-classic px-4 font-bold disabled:opacity-50"
-              >
-                SEND
-              </button>
-            </form>
-          </motion.div>
-        )
-      }
-    </div >
+          {/* Input Area */}
+          <form onSubmit={handleSendMessage} className="p-2 flex gap-2">
+            <input
+              type="text"
+              className="flex-1 p-2 border border-gray-400 text-xs shadow-inner"
+              placeholder="Type a message..."
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              autoFocus
+            />
+            <button
+              type="submit"
+              disabled={!newMessage.trim()}
+              className="btn-classic px-4 font-bold disabled:opacity-50"
+            >
+              SEND
+            </button>
+          </form>
+        </motion.div>
+      )}
+    </div>
   )
 }

@@ -31,6 +31,9 @@ export interface PilotProfile {
   flightHours: number
   balance: number
   reputation: number
+  equipped_background?: string
+  equipped_frame?: string
+  equipped_color?: string
   simBriefUsername?: string
   simBriefId?: string
   tutorialComplete?: boolean
@@ -139,7 +142,427 @@ export interface SystemAnnouncement {
   author?: PilotProfile
 }
 
+export interface Tour {
+  id: string
+  title: string
+  description: string
+  badge_image_url: string
+  created_at: string
+  legs?: TourLeg[]
+}
+
+export interface TourLeg {
+  id: string
+  tour_id: string
+  sequence_order: number
+  departure_icao: string
+  arrival_icao: string
+  leg_name: string
+}
+
+export interface PilotTour {
+  id: string
+  pilot_id: string
+  tour_id: string
+  current_leg_order: number
+  is_completed: boolean
+  completed_at?: string
+  status: 'in-progress' | 'completed'
+  tour?: Tour
+}
+
+export interface PilotBadge {
+  id: string
+  pilot_id: string
+  badge_name: string
+  badge_image_url: string
+  tour_id?: string
+  awarded_at: string
+}
+
+export interface PilotRank {
+  id: string
+  name: string
+  min_hours: number
+  image_url?: string
+  pay_rate: number
+}
+
+export interface ActiveFlight {
+  id: string
+  pilot_id: string
+  flight_number: string
+  aircraft: string
+  departure: string
+  arrival: string
+  latitude: number
+  longitude: number
+  altitude: number
+  speed: number
+  heading: number
+  phase: string
+  last_updated: string
+  pilot?: PilotProfile // Joined
+}
+
+export interface ShopItem {
+  id: string
+  type: 'background' | 'frame' | 'color' | 'aircraft_lease'
+  name: string
+  description: string
+  price: number
+  image_url?: string
+  css_class?: string
+}
+
+export interface InventoryItem {
+  id: string
+  item_id: string
+  pilot_id: string
+  purchased_at: string
+  is_equipped: boolean
+  item?: ShopItem
+}
+
+export interface Transaction {
+  id: string
+  amount: number
+  type: string
+  description: string
+  created_at: string
+}
+
 export const DataService = {
+  // --- LIVE OPS ---
+
+  async reportPosition(data: Partial<ActiveFlight>) {
+    const {
+      data: { user }
+    } = await supabase.auth.getUser()
+    if (!user) return
+
+    const { error } = await supabase.from('active_flights').upsert(
+      {
+        pilot_id: user.id,
+        ...data,
+        last_updated: new Date().toISOString()
+      },
+      { onConflict: 'pilot_id' }
+    )
+
+    if (error) console.error('Error reporting position:', error)
+  },
+
+  async getActiveFlights(): Promise<ActiveFlight[]> {
+    // Get flights updated in last 2 minutes
+    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString()
+
+    const { data, error } = await supabase
+      .from('active_flights')
+      .select('*, pilot:profiles(*)')
+      .gt('last_updated', twoMinutesAgo)
+
+    if (error) {
+      console.error('Error fetching live traffic:', error)
+      return []
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (data as any[]).map((f) => ({
+      ...f,
+      pilot: f.pilot
+    })) as ActiveFlight[]
+  },
+
+  // --- ECONOMY ---
+
+  async getShopItems(): Promise<ShopItem[]> {
+    const { data } = await supabase
+      .from('shop_items')
+      .select('*')
+      .order('price', { ascending: true })
+    return data || []
+  },
+
+  async getInventory(): Promise<InventoryItem[]> {
+    const {
+      data: { user }
+    } = await supabase.auth.getUser()
+    if (!user) return []
+
+    const { data } = await supabase
+      .from('inventory')
+      .select('*, item:shop_items(*)')
+      .eq('pilot_id', user.id)
+
+    // (cast to any for join)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (data as any[]) || []
+  },
+
+  async buyItem(item: ShopItem): Promise<{ success: boolean; message: string }> {
+    const {
+      data: { user }
+    } = await supabase.auth.getUser()
+    if (!user) return { success: false, message: 'Not logged in' }
+
+    // 1. Get current profile
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('balance, is_admin')
+      .eq('id', user.id)
+      .single()
+
+    if (!profile) return { success: false, message: 'Profile not found' }
+
+    // ADMIN BYPASS: Free purchase
+    if (profile.is_admin) {
+      const { error } = await supabase.from('inventory').insert({
+        pilot_id: user.id,
+        item_id: item.id
+      })
+
+      if (error) {
+        // Likely unique constraint if checking ownership, but typical logic:
+        return { success: false, message: 'Could not acquire item (check if already owned).' }
+      }
+      return { success: true, message: `Admin Power: Acquired ${item.name} for free!` }
+    }
+
+    // Normal User Flow
+    if (profile.balance < item.price) {
+      return { success: false, message: 'Insufficient funds!' }
+    }
+
+    // 2. Start Transaction (simple sequential)
+    // Deduct
+    const newBalance = profile.balance - item.price
+    await supabase.from('profiles').update({ balance: newBalance }).eq('id', user.id)
+
+    // Add to Inventory
+    await supabase.from('inventory').insert({
+      pilot_id: user.id,
+      item_id: item.id
+    })
+
+    // Log Transaction
+    await supabase.from('transactions').insert({
+      pilot_id: user.id,
+      amount: -item.price,
+      type: 'shop_purchase',
+      description: `Bought ${item.name}`
+    })
+
+    return { success: true, message: `Successfully purchased ${item.name}!` }
+  },
+
+  async equipItem(item: InventoryItem, type: string) {
+    const {
+      data: { user }
+    } = await supabase.auth.getUser()
+    if (!user) return
+
+    // Update Profile Column based on type
+    let updateColumn = ''
+    if (type === 'background') updateColumn = 'equipped_background'
+    else if (type === 'frame') updateColumn = 'equipped_frame'
+    else if (type === 'color') updateColumn = 'equipped_color'
+
+    if (updateColumn) {
+      // Set CSS class from the item
+      await supabase
+        .from('profiles')
+        .update({
+          [updateColumn]: item.item?.css_class
+        })
+        .eq('id', user.id)
+    }
+  },
+
+  async unequipAll() {
+    const {
+      data: { user }
+    } = await supabase.auth.getUser()
+    if (!user) return
+
+    await supabase
+      .from('profiles')
+      .update({
+        equipped_background: null,
+        equipped_frame: null,
+        equipped_color: null
+      })
+      .eq('id', user.id)
+  },
+
+  // --- RANKS ---
+  
+  async getRanks(): Promise<PilotRank[]> {
+    const { data, error } = await supabase
+      .from('ranks')
+      .select('*')
+      .order('min_hours', { ascending: true })
+
+    if (error) {
+      console.error('Error fetching ranks:', error)
+      return []
+    }
+    return data as PilotRank[]
+  },
+
+  async checkRankPromotion(pilotId: string, currentHours: number) {
+     const ranks = await this.getRanks()
+     if (ranks.length === 0) return
+
+     // Find highest eligible rank
+     const eligibleRank = [...ranks].reverse().find(r => currentHours >= r.min_hours)
+     if (!eligibleRank) return
+
+     // Get current profile to check if update needed
+     const { data: profile } = await supabase.from('profiles').select('rank_id').eq('id', pilotId).single()
+     
+     if (profile && profile.rank_id !== eligibleRank.id) {
+        // Promote!
+        await supabase.from('profiles').update({ rank_id: eligibleRank.id }).eq('id', pilotId)
+        // Could enable a notification here if we had a system for it
+     }
+  },
+
+  // --- TOURS & BADGES ---
+
+  async getTours(): Promise<Tour[]> {
+    const { data, error } = await supabase
+      .from('tours')
+      .select('*, legs:tour_legs(*)')
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('Error fetching tours:', error)
+      return []
+    }
+
+    // Sort legs by sequence_order
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (data as any[]).map((tour) => ({
+      ...tour,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      legs: (tour.legs as any[]).sort((a: any, b: any) => a.sequence_order - b.sequence_order)
+    })) as unknown as Tour[]
+  },
+
+  async joinTour(tourId: string) {
+    const {
+      data: { user }
+    } = await supabase.auth.getUser()
+    if (!user) return
+
+    const { error } = await supabase.from('pilot_tours').insert({
+      pilot_id: user.id,
+      tour_id: tourId,
+      current_leg_order: 1,
+      status: 'in-progress'
+    })
+
+    if (error) throw error
+  },
+
+  async getPilotTours(): Promise<PilotTour[]> {
+    const {
+      data: { user }
+    } = await supabase.auth.getUser()
+    if (!user) return []
+
+    const { data, error } = await supabase
+      .from('pilot_tours')
+      .select('*, tour:tours(*)')
+      .eq('pilot_id', user.id)
+
+    if (error) {
+      console.error('Error fetching pilot tours:', error)
+      return []
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return data as any as PilotTour[]
+  },
+
+  async getPilotBadges(pilotId?: string): Promise<PilotBadge[]> {
+    const targetId = pilotId || (await supabase.auth.getUser()).data.user?.id
+    if (!targetId) return []
+
+    const { data, error } = await supabase
+      .from('pilot_badges')
+      .select('*')
+      .eq('pilot_id', targetId)
+      .order('awarded_at', { ascending: false })
+
+    if (error) {
+      console.error('Error fetching badges:', error)
+      return []
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return data as any as PilotBadge[]
+  },
+
+  async checkTourProgress(flight: { departure: string; arrival: string }) {
+    const {
+      data: { user }
+    } = await supabase.auth.getUser()
+    if (!user) return
+
+    // Get all active tours
+    const { data: activeTours } = await supabase
+      .from('pilot_tours')
+      .select('*, tour:tours(*, legs:tour_legs(*))')
+      .eq('pilot_id', user.id)
+      .eq('status', 'in-progress')
+
+    if (!activeTours) return
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const pilotTour of activeTours as any[]) {
+      // Find the current leg
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const currentLeg = (pilotTour.tour.legs as any[]).find(
+        (l: any) => l.sequence_order === pilotTour.current_leg_order
+      )
+
+      if (
+        currentLeg &&
+        currentLeg.departure_icao === flight.departure &&
+        currentLeg.arrival_icao === flight.arrival
+      ) {
+        // Match found!
+        const nextOrder = pilotTour.current_leg_order + 1
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const maxOrder = Math.max(
+          ...(pilotTour.tour.legs as any[]).map((l: any) => l.sequence_order)
+        )
+        const isFinished = nextOrder > maxOrder
+
+        // Update Progress
+        await supabase
+          .from('pilot_tours')
+          .update({
+            current_leg_order: nextOrder,
+            status: isFinished ? 'completed' : 'in-progress',
+            is_completed: isFinished,
+            completed_at: isFinished ? new Date().toISOString() : null
+          })
+          .eq('id', pilotTour.id)
+
+        // Award Badge if finished
+        if (isFinished) {
+          await supabase.from('pilot_badges').insert({
+            pilot_id: user.id,
+            badge_name: pilotTour.tour.title + ' Finisher',
+            badge_image_url: pilotTour.tour.badge_image_url,
+            tour_id: pilotTour.tour.id
+          })
+        }
+      }
+    }
+  },
+
   async cleanupFlightDuplicates(): Promise<void> {
     const { error } = await supabase.rpc('cleanup_flight_duplicates')
     if (error) {
@@ -159,15 +582,18 @@ export const DataService = {
     if (!user) return DEFAULT_PROFILE
 
     try {
-      const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+      const { data, error } = await supabase.from('profiles').select('*, rank:ranks(*)').eq('id', user.id).single()
 
       if (error) throw error
       if (data) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const rankName = (data.rank as any)?.name || 'Cadet'
+        
         return {
           id: data.id,
           callsign: data.callsign,
           avatar_url: data.avatar_url, // Map from DB
-          rank: 'Cadet', // Could be stored in DB later
+          rank: rankName,
           homeBase: data.home_base || 'LGAV',
           currentLocation: (data.current_location as any)?.icao || data.home_base || 'LGAV', // Simplified for now
           flightHours: Number(data.flight_hours) || 0,
@@ -176,10 +602,13 @@ export const DataService = {
           simBriefUsername: data.simbrief_username,
           simBriefId: data.simbrief_id,
           isAdmin: data.is_admin || false,
-          status: data.status || 'active',
-          // Store tutorial complete in local storage for now to avoid DB schema change for MVP
-          tutorialComplete: localStorage.getItem(`tutorial_${user.id}`) === 'true'
-        }
+        status: data.status || 'active',
+        equipped_background: data.equipped_background,
+        equipped_frame: data.equipped_frame,
+        equipped_color: data.equipped_color,
+        // Store tutorial complete in local storage for now to avoid DB schema change for MVP
+        tutorialComplete: localStorage.getItem(`tutorial_${user.id}`) === 'true'
+      }
       }
     } catch (e) {
       console.error('Error fetching profile:', e)
@@ -295,8 +724,8 @@ export const DataService = {
 
     const { data, error } = await query
     if (error) {
-       console.error('Error fetching PIREPs:', error)
-       return []
+      console.error('Error fetching PIREPs:', error)
+      return []
     }
     return data
   },
@@ -309,8 +738,8 @@ export const DataService = {
       .single()
 
     if (error) {
-       console.error('Error fetching PIREP:', error)
-       return null
+      console.error('Error fetching PIREP:', error)
+      return null
     }
     return data
   },
@@ -353,7 +782,16 @@ export const DataService = {
     return []
   },
 
-  async addFlightLog(entry: FlightLogEntry & { score?: number; events?: any[]; flight_data?: any; max_bank?: number; max_g?: number; landing_lights_penalty?: boolean }) {
+  async addFlightLog(
+    entry: FlightLogEntry & {
+      score?: number
+      events?: any[]
+      flight_data?: any
+      max_bank?: number
+      max_g?: number
+      landing_lights_penalty?: boolean
+    }
+  ) {
     const log = await this.getFlightLog()
     const newLog = [entry, ...log]
     const {
@@ -367,31 +805,37 @@ export const DataService = {
 
     // Update CLOUD stats (PIREP)
     const { error } = await supabase.from('completed_flights').insert({
-        pilot_id: user.id,
-        flight_number: entry.flightNumber,
-        departure_icao: entry.departure,
-        arrival_icao: entry.arrival,
-        aircraft_type: entry.aircraft,
-        flight_time: entry.duration, // minutes
-        distance: entry.distanceFlown || entry.distance,
-        landing_rate: entry.landingRate,
-        revenue: entry.earnings,
-        score: entry.score || 100,
-        flight_events: entry.events || [],
-        max_bank: entry.max_bank || 0,
-        max_g: entry.max_g || 1,
-        landing_lights_penalty: entry.landing_lights_penalty || false
+      pilot_id: user.id,
+      flight_number: entry.flightNumber,
+      departure_icao: entry.departure,
+      arrival_icao: entry.arrival,
+      aircraft_type: entry.aircraft,
+      flight_time: entry.duration, // minutes
+      distance: entry.distanceFlown || entry.distance,
+      landing_rate: entry.landingRate,
+      revenue: entry.earnings,
+      score: entry.score || 100,
+      flight_events: entry.events || [],
+      max_bank: entry.max_bank || 0,
+      max_g: entry.max_g || 1,
+      landing_lights_penalty: entry.landing_lights_penalty || false
     })
 
     if (error) console.error('Error saving PIREP to cloud:', error)
 
+    // CHECK TOUR PROGRESS
+    await this.checkTourProgress({ departure: entry.departure, arrival: entry.arrival })
+
     // Update Profile Stats
     const profile = await this.getProfile()
     if (profile) {
+      const newHours = profile.flightHours + entry.duration / 60
       await this.updateProfile({
-        flightHours: profile.flightHours + entry.duration / 60,
+        flightHours: newHours,
         balance: profile.balance + entry.earnings
       })
+      // Check Rank - Automatically promote if eligible
+      await this.checkRankPromotion(user.id, newHours)
     }
     return newLog
   },
@@ -544,7 +988,7 @@ export const DataService = {
       return []
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (data as any[])?.map(t => ({
+    return (data as any[])?.map((t) => ({
       ...t,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       user: (t as any).profiles
@@ -560,7 +1004,7 @@ export const DataService = {
 
     if (error) console.error('Error fetching messages:', error)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (data as any[])?.map(m => ({
+    return (data as any[])?.map((m) => ({
       ...m,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       sender: (m as any).profiles
@@ -703,7 +1147,10 @@ export const DataService = {
       balance: Number(p.balance),
       reputation: 100,
       isAdmin: p.is_admin,
-      status: p.status || 'active'
+      status: p.status || 'active',
+      equipped_background: p.equipped_background,
+      equipped_frame: p.equipped_frame,
+      equipped_color: p.equipped_color
     }))
   },
 
@@ -823,8 +1270,8 @@ export const DataService = {
           this.followPilot(request.sender_id), // Me follow them
           // They follow me (insert manually/admin-like or just rely on 'friends' concept?
           // For now, we reuse social_connections for "Connected" state if needed,
-          // OR purely rely on friend_requests table. 
-          // Let's rely on social_connections logic for now to keep SocialHub simple, 
+          // OR purely rely on friend_requests table.
+          // Let's rely on social_connections logic for now to keep SocialHub simple,
           // or we can insert the reverse connection manually here:
           supabase.from('social_connections').insert({
             follower_id: request.sender_id,
@@ -833,7 +1280,10 @@ export const DataService = {
         ])
       }
       // Reject: delete request
-      const { error: deleteError } = await supabase.from('friend_requests').delete().eq('id', requestId)
+      const { error: deleteError } = await supabase
+        .from('friend_requests')
+        .delete()
+        .eq('id', requestId)
       if (deleteError) throw deleteError
     }
   },
@@ -886,16 +1336,23 @@ export const DataService = {
     if (updates.flightHours !== undefined) dbUpdates.flight_hours = updates.flightHours
     if (updates.balance !== undefined) dbUpdates.balance = updates.balance
     if (updates.reputation !== undefined) dbUpdates.reputation = updates.reputation
-    if (updates.rank !== undefined) dbUpdates.rank = updates.rank
+    if (updates.rank !== undefined) {
+      const { data: rankData } = await supabase
+        .from('ranks')
+        .select('id')
+        .eq('name', updates.rank)
+        .single()
+
+      if (rankData) {
+        dbUpdates.rank_id = rankData.id
+      }
+    }
     if (updates.homeBase !== undefined) dbUpdates.home_base = updates.homeBase
     if (updates.currentLocation !== undefined) dbUpdates.current_location = updates.currentLocation
     if (updates.status !== undefined) dbUpdates.status = updates.status
     if (updates.callsign !== undefined) dbUpdates.callsign = updates.callsign
 
-    const { error } = await supabase
-      .from('profiles')
-      .update(dbUpdates)
-      .eq('id', pilotId)
+    const { error } = await supabase.from('profiles').update(dbUpdates).eq('id', pilotId)
     if (error) throw error
   },
 
@@ -930,24 +1387,36 @@ export const DataService = {
 
     // Use RPC to securely delete both directions
     const { error } = await supabase.rpc('break_connection', { target_id: targetId })
-    
+
     // Fallback if RPC doesn't exist yet (for older DB state)
     if (error) {
       console.warn('RPC break_connection failed, falling back to manual delete', error)
       // Attempt manual delete (legacy)
-      await supabase.from('social_connections').delete().or(`and(follower_id.eq.${user.id},following_id.eq.${targetId}),and(follower_id.eq.${targetId},following_id.eq.${user.id})`)
-      await supabase.from('friend_requests').delete().or(`and(sender_id.eq.${user.id},receiver_id.eq.${targetId}),and(sender_id.eq.${targetId},receiver_id.eq.${user.id})`)
+      await supabase
+        .from('social_connections')
+        .delete()
+        .or(
+          `and(follower_id.eq.${user.id},following_id.eq.${targetId}),and(follower_id.eq.${targetId},following_id.eq.${user.id})`
+        )
+      await supabase
+        .from('friend_requests')
+        .delete()
+        .or(
+          `and(sender_id.eq.${user.id},receiver_id.eq.${targetId}),and(sender_id.eq.${targetId},receiver_id.eq.${user.id})`
+        )
     }
   },
 
-  async getConnectionStatus(targetId: string): Promise<'none' | 'pending_sent' | 'pending_received' | 'connected'> {
+  async getConnectionStatus(
+    targetId: string
+  ): Promise<'none' | 'pending_sent' | 'pending_received' | 'connected'> {
     const {
       data: { user }
     } = await supabase.auth.getUser()
     if (!user) return 'none'
 
     // Check confirmed connection (social_connections)
-    // Note: This relies on "following" logic. If we fully switch to friends, 
+    // Note: This relies on "following" logic. If we fully switch to friends,
     // we should check friend_requests with status='accepted'.
     // Faster check: do I follow them?
     const following = await this.getFollowing()
@@ -1074,7 +1543,7 @@ export const DataService = {
       .select('*, ticket:support_tickets!inner(user_id)', { count: 'exact', head: true })
       .neq('sender_id', user.id) // Not sent by me
       .eq('is_read', false)
-    
+
     if (error) {
       console.error('Error counting unread support:', error)
       return 0
@@ -1108,162 +1577,164 @@ export const DataService = {
   },
 
   async syncFlightSchedules(airlineIata: string, apiKey: string): Promise<{ message: string }> {
-      try {
-         // 1. Fetch from Main Process (Bypasses CORS)
-         const api = (window as any).api
-         if (!api?.airlabs) throw new Error('AirLabs API not available in this environment')
-         
-         const data = await api.airlabs.getSchedules(airlineIata, apiKey)
-         const schedules = data.response || []
-         
-         if (schedules.length === 0) {
-             return { message: 'No schedules found for this airline.' }
-         }
+    try {
+      // 1. Fetch from Main Process (Bypasses CORS)
+      const api = (window as any).api
+      if (!api?.airlabs) throw new Error('AirLabs API not available in this environment')
 
-         // 2. Process Data (Map AirLabs format to DB format)
-         const processedFlights: any[] = []
-         
-         for (const route of schedules) {
-            try {
-                if (!route.dep_time || typeof route.dep_time !== 'string') continue;
-                
-                // Parse Time "HH:MM"
-                const parts = route.dep_time.split(':')
-                if (parts.length !== 2) continue;
-                
-                const depH = parseInt(parts[0], 10)
-                const depM = parseInt(parts[1], 10)
-                
-                if (isNaN(depH) || isNaN(depM)) continue;
+      const data = await api.airlabs.getSchedules(airlineIata, apiKey)
+      const schedules = data.response || []
 
-                // Create Date for TODAY
-                const depTime = new Date()
-                depTime.setHours(depH, depM, 0, 0)
-                
-                // Handle invalid date
-                if (isNaN(depTime.getTime())) continue;
-
-                // Duration
-                const duration = Number(route.duration) || 60
-                const arrTime = new Date(depTime.getTime() + duration * 60000)
-
-                processedFlights.push({
-                    flight_number: route.flight_iata || `GQ${Math.floor(Math.random()*999)}`,
-                    dep_icao: route.dep_icao || 'LGAV',
-                    arr_icao: route.arr_icao || 'LGTS',
-                    departure_time: depTime.toISOString(),
-                    arrival_time: arrTime.toISOString(),
-                    aircraft_type: route.aircraft_icao || 'A320',
-                    duration: duration,
-                    // days: route.days -- Column does not exist in DB
-                    airline_icao: route.airline_icao || 'GQE'
-                })
-            } catch (e) {
-                console.warn('Skipping invalid flight route:', route, e)
-            }
-         }
-
-         // 3. Sync Strategy: Replace 'scheduled' flights for the day
-         // (Since we don't have a unique constraint for UPSERT, we clear and re-add)
-         
-         // 3. Sync Strategy: Replace 'scheduled' flights for the NEXT 30 DAYS
-         // (Since we don't have a unique constraint for UPSERT, we clear and re-add)
-         
-         const now = new Date()
-         const start = new Date(now)
-         start.setHours(0, 0, 0, 0)
-         
-         const daysToSync = 30
-         const end = new Date(now)
-         end.setDate(end.getDate() + daysToSync)
-         end.setHours(23, 59, 59, 999)
-
-         // A. Delete existing SCHEDULED flights for this range to prevent duplicates
-         const { error: deleteError } = await supabase
-            .from('flight_schedules')
-            .delete()
-            .eq('status', 'scheduled') 
-            .gte('departure_time', start.toISOString())
-            .lte('departure_time', end.toISOString())
-         
-         if (deleteError) {
-             console.error('Error clearing old schedules:', deleteError)
-             throw deleteError
-         }
-
-         // B. Generate and Insert New for 30 days
-         const allFlightsToInsert: any[] = []
-
-         for (let i = 0; i < daysToSync; i++) {
-            const currentDay = new Date(start)
-            currentDay.setDate(currentDay.getDate() + i)
-            
-            // For each route in our processed list (which was based on "today's" schedule or generic schedule)
-            // we create a concrete flight for 'currentDay'.
-            // Note: 'processedFlights' currently has hardcoded dates for "today".
-            // We need to re-generate the timestamp for each day.
-            
-            for (const route of schedules) {
-                try {
-                    if (!route.dep_time || typeof route.dep_time !== 'string') continue;
-
-                    const parts = route.dep_time.split(':')
-                    if (parts.length !== 2) continue;
-                    
-                    const depH = parseInt(parts[0], 10)
-                    const depM = parseInt(parts[1], 10)
-                    
-                    if (isNaN(depH) || isNaN(depM)) continue;
-
-                    // Set time for current iteration day
-                    const depTime = new Date(currentDay)
-                    depTime.setHours(depH, depM, 0, 0)
-                    
-                    if (isNaN(depTime.getTime())) continue;
-
-                    const duration = Number(route.duration) || 60
-                    const arrTime = new Date(depTime.getTime() + duration * 60000)
-
-                    // Basic check: Filter by days running?
-                    // route.days is like "1234567" (Mon-Sun). 
-                    // JS getDay(): 0=Sun, 1=Mon...6=Sat.
-                    // AirLabs usually uses 1=Mon...7=Sun? Or similar.
-                    // Let's assume inclusive. If route.days is string of digits.
-                    let runDay = depTime.getDay() // 0-6
-                    if (runDay === 0) runDay = 7 // Convert Sun 0 to 7 to match typical aviation standard if needed
-                    
-                    // If route.days exists and doesn't include this day, skip.
-                    // If route.days is null/empty, assume daily.
-                    if (route.days && !route.days.includes(String(runDay))) {
-                         continue;
-                    }
-
-                    allFlightsToInsert.push({
-                        flight_number: route.flight_iata || `GQ${Math.floor(Math.random()*999)}`,
-                        dep_icao: route.dep_icao || 'LGAV',
-                        arr_icao: route.arr_icao || 'LGTS',
-                        departure_time: depTime.toISOString(),
-                        arrival_time: arrTime.toISOString(),
-                        aircraft_type: route.aircraft_icao || 'A320',
-                        duration: duration,
-                        airline_icao: route.airline_icao || 'GQE'
-                    })
-                } catch (err) {
-                   // ignore
-                }
-            }
-         }
-
-         if (allFlightsToInsert.length > 0) {
-             // Insert in chunks to avoid payload limit? 30 days * 50 flights = 1500 rows. Should be fine.
-             const { error } = await supabase.from('flight_schedules').insert(allFlightsToInsert)
-             if (error) throw error
-         }
-
-         return { message: `Successfully synced ${allFlightsToInsert.length} flights for the next ${daysToSync} days.` }
-      } catch (err: any) {
-          console.error('Sync Error:', err)
-          throw new Error(err.message || 'Sync Failed')
+      if (schedules.length === 0) {
+        return { message: 'No schedules found for this airline.' }
       }
+
+      // 2. Process Data (Map AirLabs format to DB format)
+      const processedFlights: any[] = []
+
+      for (const route of schedules) {
+        try {
+          if (!route.dep_time || typeof route.dep_time !== 'string') continue
+
+          // Parse Time "HH:MM"
+          const parts = route.dep_time.split(':')
+          if (parts.length !== 2) continue
+
+          const depH = parseInt(parts[0], 10)
+          const depM = parseInt(parts[1], 10)
+
+          if (isNaN(depH) || isNaN(depM)) continue
+
+          // Create Date for TODAY
+          const depTime = new Date()
+          depTime.setHours(depH, depM, 0, 0)
+
+          // Handle invalid date
+          if (isNaN(depTime.getTime())) continue
+
+          // Duration
+          const duration = Number(route.duration) || 60
+          const arrTime = new Date(depTime.getTime() + duration * 60000)
+
+          processedFlights.push({
+            flight_number: route.flight_iata || `GQ${Math.floor(Math.random() * 999)}`,
+            dep_icao: route.dep_icao || 'LGAV',
+            arr_icao: route.arr_icao || 'LGTS',
+            departure_time: depTime.toISOString(),
+            arrival_time: arrTime.toISOString(),
+            aircraft_type: route.aircraft_icao || 'A320',
+            duration: duration,
+            // days: route.days -- Column does not exist in DB
+            airline_icao: route.airline_icao || 'GQE'
+          })
+        } catch (e) {
+          console.warn('Skipping invalid flight route:', route, e)
+        }
+      }
+
+      // 3. Sync Strategy: Replace 'scheduled' flights for the day
+      // (Since we don't have a unique constraint for UPSERT, we clear and re-add)
+
+      // 3. Sync Strategy: Replace 'scheduled' flights for the NEXT 30 DAYS
+      // (Since we don't have a unique constraint for UPSERT, we clear and re-add)
+
+      const now = new Date()
+      const start = new Date(now)
+      start.setHours(0, 0, 0, 0)
+
+      const daysToSync = 30
+      const end = new Date(now)
+      end.setDate(end.getDate() + daysToSync)
+      end.setHours(23, 59, 59, 999)
+
+      // A. Delete existing SCHEDULED flights for this range to prevent duplicates
+      const { error: deleteError } = await supabase
+        .from('flight_schedules')
+        .delete()
+        .eq('status', 'scheduled')
+        .gte('departure_time', start.toISOString())
+        .lte('departure_time', end.toISOString())
+
+      if (deleteError) {
+        console.error('Error clearing old schedules:', deleteError)
+        throw deleteError
+      }
+
+      // B. Generate and Insert New for 30 days
+      const allFlightsToInsert: any[] = []
+
+      for (let i = 0; i < daysToSync; i++) {
+        const currentDay = new Date(start)
+        currentDay.setDate(currentDay.getDate() + i)
+
+        // For each route in our processed list (which was based on "today's" schedule or generic schedule)
+        // we create a concrete flight for 'currentDay'.
+        // Note: 'processedFlights' currently has hardcoded dates for "today".
+        // We need to re-generate the timestamp for each day.
+
+        for (const route of schedules) {
+          try {
+            if (!route.dep_time || typeof route.dep_time !== 'string') continue
+
+            const parts = route.dep_time.split(':')
+            if (parts.length !== 2) continue
+
+            const depH = parseInt(parts[0], 10)
+            const depM = parseInt(parts[1], 10)
+
+            if (isNaN(depH) || isNaN(depM)) continue
+
+            // Set time for current iteration day
+            const depTime = new Date(currentDay)
+            depTime.setHours(depH, depM, 0, 0)
+
+            if (isNaN(depTime.getTime())) continue
+
+            const duration = Number(route.duration) || 60
+            const arrTime = new Date(depTime.getTime() + duration * 60000)
+
+            // Basic check: Filter by days running?
+            // route.days is like "1234567" (Mon-Sun).
+            // JS getDay(): 0=Sun, 1=Mon...6=Sat.
+            // AirLabs usually uses 1=Mon...7=Sun? Or similar.
+            // Let's assume inclusive. If route.days is string of digits.
+            let runDay = depTime.getDay() // 0-6
+            if (runDay === 0) runDay = 7 // Convert Sun 0 to 7 to match typical aviation standard if needed
+
+            // If route.days exists and doesn't include this day, skip.
+            // If route.days is null/empty, assume daily.
+            if (route.days && !route.days.includes(String(runDay))) {
+              continue
+            }
+
+            allFlightsToInsert.push({
+              flight_number: route.flight_iata || `GQ${Math.floor(Math.random() * 999)}`,
+              dep_icao: route.dep_icao || 'LGAV',
+              arr_icao: route.arr_icao || 'LGTS',
+              departure_time: depTime.toISOString(),
+              arrival_time: arrTime.toISOString(),
+              aircraft_type: route.aircraft_icao || 'A320',
+              duration: duration,
+              airline_icao: route.airline_icao || 'GQE'
+            })
+          } catch (err) {
+            // ignore
+          }
+        }
+      }
+
+      if (allFlightsToInsert.length > 0) {
+        // Insert in chunks to avoid payload limit? 30 days * 50 flights = 1500 rows. Should be fine.
+        const { error } = await supabase.from('flight_schedules').insert(allFlightsToInsert)
+        if (error) throw error
+      }
+
+      return {
+        message: `Successfully synced ${allFlightsToInsert.length} flights for the next ${daysToSync} days.`
+      }
+    } catch (err: any) {
+      console.error('Sync Error:', err)
+      throw new Error(err.message || 'Sync Failed')
+    }
   }
 }

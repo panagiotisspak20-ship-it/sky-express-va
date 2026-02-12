@@ -1,12 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../services/supabase'
 import { useNavigate } from 'react-router-dom'
-import {
-  Calendar,
-  Filter,
-  Plane,
-  RefreshCw
-} from 'lucide-react'
+import { Calendar, Filter, Plane, RefreshCw } from 'lucide-react'
 import { DataService } from '../services/dataService'
 
 export const Flights = () => {
@@ -35,12 +30,18 @@ export const Flights = () => {
         }
 
         if (data && data.length > 0) {
-          const mappedFlights = data.map(f => {
+          const mappedFlights = data.map((f) => {
             const depDate = new Date(f.departure_time)
             const arrDate = new Date(f.arrival_time)
 
-            const depTimeStr = depDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-            const arrTimeStr = arrDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+            const depTimeStr = depDate.toLocaleTimeString('en-GB', {
+              hour: '2-digit',
+              minute: '2-digit'
+            })
+            const arrTimeStr = arrDate.toLocaleTimeString('en-GB', {
+              hour: '2-digit',
+              minute: '2-digit'
+            })
 
             const fDateStr = depDate.toISOString().split('T')[0]
             const todayStr = new Date().toISOString().split('T')[0]
@@ -60,7 +61,7 @@ export const Flights = () => {
               depTime: depTimeStr,
               arrTime: arrTimeStr,
               departureTime: f.departure_time, // Full ISO
-              arrivalTime: f.arrival_time,     // Full ISO
+              arrivalTime: f.arrival_time, // Full ISO
               aircraft: f.aircraft_type || 'A320',
               date: fDateStr,
               dateObj: depDate,
@@ -105,7 +106,9 @@ export const Flights = () => {
     // 1. Verify SimBrief ID exists
     const profile = await DataService.getProfile()
     if (!profile?.simBriefId || !profile?.simBriefUsername) {
-      alert('⚠️ Missing SimBrief Configuration!\n\nPlease go to Settings -> Integrations and enter your SimBrief Pilot ID and Username to book flights and generate SimBrief OFPs.')
+      alert(
+        '⚠️ Missing SimBrief Configuration!\n\nPlease go to Settings -> Integrations and enter your SimBrief Pilot ID and Username to book flights and generate SimBrief OFPs.'
+      )
       navigate('/settings')
       return
     }
@@ -115,8 +118,12 @@ export const Flights = () => {
     const newBooking = {
       id: flightId,
       flightNumber: flight.flightNo,
-      departure: flight.origin.includes('(') ? flight.origin.split('(')[1].replace(')', '') : flight.origin,
-      arrival: flight.destination.includes('(') ? flight.destination.split('(')[1].replace(')', '') : flight.destination,
+      departure: flight.origin.includes('(')
+        ? flight.origin.split('(')[1].replace(')', '')
+        : flight.origin,
+      arrival: flight.destination.includes('(')
+        ? flight.destination.split('(')[1].replace(')', '')
+        : flight.destination,
       aircraft: flight.aircraft,
       scheduledDeparture: flight.departureTime || new Date().toISOString(),
       scheduledArrival: flight.arrivalTime || new Date().toISOString(),
@@ -158,8 +165,6 @@ export const Flights = () => {
     return date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
   }
 
-
-
   return (
     <div className="p-4 h-full flex flex-col font-tahoma bg-[#f0f0f0]">
       <div className="flex justify-between items-center mb-2 px-1">
@@ -188,27 +193,34 @@ export const Flights = () => {
           <RefreshCw className="w-3 h-3" /> ALL DATES
         </button>
         <div className="h-4 w-px bg-gray-300"></div>
-        {uniqueDates.length > 0 ? uniqueDates.slice(0, 14).map((date) => {
-          const isToday = date === new Date().toISOString().split('T')[0]
-          const isTomorrow = date === new Date(Date.now() + 86400000).toISOString().split('T')[0]
-          return (
-            <button
-              key={date}
-              onClick={() => setSelectedDate(date)}
-              className={`px-2 py-1 text-[10px] border whitespace-nowrap ${selectedDate === date
-                ? 'bg-blue-600 text-white border-blue-700'
-                : isToday
-                  ? 'bg-green-100 border-green-400 text-green-800 font-bold'
-                  : isTomorrow
-                    ? 'bg-yellow-50 border-yellow-300'
-                    : 'bg-white border-gray-300 hover:bg-gray-100'
+        {uniqueDates.length > 0 ? (
+          uniqueDates.slice(0, 14).map((date) => {
+            const isToday = date === new Date().toISOString().split('T')[0]
+            const isTomorrow = date === new Date(Date.now() + 86400000).toISOString().split('T')[0]
+            return (
+              <button
+                key={date}
+                onClick={() => setSelectedDate(date)}
+                className={`px-2 py-1 text-[10px] border whitespace-nowrap ${
+                  selectedDate === date
+                    ? 'bg-blue-600 text-white border-blue-700'
+                    : isToday
+                      ? 'bg-green-100 border-green-400 text-green-800 font-bold'
+                      : isTomorrow
+                        ? 'bg-yellow-50 border-yellow-300'
+                        : 'bg-white border-gray-300 hover:bg-gray-100'
                 }`}
-            >
-              {isToday ? '★ TODAY' : isTomorrow ? 'TOMORROW' : formatDate(date)}
-            </button>
-          )
-        }) : <span className="text-[10px] text-gray-400 px-2 italic">No dates available</span>}
-        {uniqueDates.length > 14 && <span className="text-[10px] text-gray-500">+{uniqueDates.length - 14} more...</span>}
+              >
+                {isToday ? '★ TODAY' : isTomorrow ? 'TOMORROW' : formatDate(date)}
+              </button>
+            )
+          })
+        ) : (
+          <span className="text-[10px] text-gray-400 px-2 italic">No dates available</span>
+        )}
+        {uniqueDates.length > 14 && (
+          <span className="text-[10px] text-gray-500">+{uniqueDates.length - 14} more...</span>
+        )}
       </div>
 
       {/* Filter Bar */}
@@ -219,10 +231,11 @@ export const Flights = () => {
           <button
             key={ac}
             onClick={() => setFilterAircraft(ac)}
-            className={`px-2 py-0.5 text-[10px] border ${filterAircraft === ac
-              ? 'bg-blue-600 text-white border-blue-700'
-              : 'bg-white border-gray-300'
-              }`}
+            className={`px-2 py-0.5 text-[10px] border ${
+              filterAircraft === ac
+                ? 'bg-blue-600 text-white border-blue-700'
+                : 'bg-white border-gray-300'
+            }`}
           >
             {ac}
           </button>
@@ -235,7 +248,9 @@ export const Flights = () => {
           <span className="text-xs font-bold text-[#333]">
             {selectedDate ? `Flights on ${formatDate(selectedDate)}` : 'All Scheduled Flights'}
           </span>
-          <span className="text-[10px] text-gray-600 font-mono">{filteredFlights.length} Total Flights</span>
+          <span className="text-[10px] text-gray-600 font-mono">
+            {filteredFlights.length} Total Flights
+          </span>
         </div>
 
         <div className="flex-1 overflow-y-auto inset-box bg-white">
@@ -254,62 +269,69 @@ export const Flights = () => {
               </tr>
             </thead>
             <tbody>
-              {filteredFlights.length > 0 ? filteredFlights.map((flight, idx) => (
-                <tr
-                  key={flight.id}
-                  className={`${idx % 2 === 0 ? 'bg-white' : 'bg-[#f9f9f9]'} hover:bg-blue-100 cursor-default`}
-                >
-                  <td className="p-1 border border-gray-200 text-[10px] text-gray-600">
-                    {formatDate(flight.date)}
-                  </td>
-                  <td className="p-1 border border-gray-200 font-bold text-blue-900">
-                    {flight.flightNo}
-                  </td>
-                  <td className="p-1 border border-gray-200">{flight.origin}</td>
-                  <td className="p-1 border border-gray-200">{flight.destination}</td>
-                  <td className="p-1 border border-gray-200 text-center font-mono">
-                    {flight.depTime}
-                  </td>
-                  <td className="p-1 border border-gray-200 text-center font-mono">
-                    {flight.arrTime}
-                  </td>
-                  <td className="p-1 border border-gray-200">
-                    <span
-                      className={`px-1 text-[9px] ${flight.aircraft.includes('A321')
-                        ? 'bg-purple-100 text-purple-800'
-                        : flight.aircraft.includes('A320')
-                          ? 'bg-blue-100 text-blue-800'
-                          : 'bg-green-100 text-green-800'
+              {filteredFlights.length > 0 ? (
+                filteredFlights.map((flight, idx) => (
+                  <tr
+                    key={flight.id}
+                    className={`${idx % 2 === 0 ? 'bg-white' : 'bg-[#f9f9f9]'} hover:bg-blue-100 cursor-default`}
+                  >
+                    <td className="p-1 border border-gray-200 text-[10px] text-gray-600">
+                      {formatDate(flight.date)}
+                    </td>
+                    <td className="p-1 border border-gray-200 font-bold text-blue-900">
+                      {flight.flightNo}
+                    </td>
+                    <td className="p-1 border border-gray-200">{flight.origin}</td>
+                    <td className="p-1 border border-gray-200">{flight.destination}</td>
+                    <td className="p-1 border border-gray-200 text-center font-mono">
+                      {flight.depTime}
+                    </td>
+                    <td className="p-1 border border-gray-200 text-center font-mono">
+                      {flight.arrTime}
+                    </td>
+                    <td className="p-1 border border-gray-200">
+                      <span
+                        className={`px-1 text-[9px] ${
+                          flight.aircraft.includes('A321')
+                            ? 'bg-purple-100 text-purple-800'
+                            : flight.aircraft.includes('A320')
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-green-100 text-green-800'
                         }`}
-                    >
-                      {flight.aircraft}
-                    </span>
-                  </td>
-                  <td className="p-1 border border-gray-200 text-center">
-                    <span
-                      className={`px-1 text-[10px] uppercase font-bold ${flight.status === 'Today'
-                        ? 'bg-green-200 text-green-900'
-                        : flight.status === 'Tomorrow'
-                          ? 'bg-yellow-200 text-yellow-900'
-                          : 'text-gray-500'
+                      >
+                        {flight.aircraft}
+                      </span>
+                    </td>
+                    <td className="p-1 border border-gray-200 text-center">
+                      <span
+                        className={`px-1 text-[10px] uppercase font-bold ${
+                          flight.status === 'Today'
+                            ? 'bg-green-200 text-green-900'
+                            : flight.status === 'Tomorrow'
+                              ? 'bg-yellow-200 text-yellow-900'
+                              : 'text-gray-500'
                         }`}
-                    >
-                      {flight.status}
-                    </span>
-                  </td>
-                  <td className="p-1 border border-gray-200 text-center">
-                    <button
-                      onClick={() => handleDispatch(flight)}
-                      className="border border-gray-400 bg-[#eee] px-2 text-[9px] hover:bg-[#ddd] active:border-t-gray-600 active:border-l-gray-600 active:border-white active:bg-[#d0d0d0] flex items-center gap-1"
-                    >
-                      <Plane className="w-2.5 h-2.5" /> BOOK
-                    </button>
-                  </td>
-                </tr>
-              )) : (
+                      >
+                        {flight.status}
+                      </span>
+                    </td>
+                    <td className="p-1 border border-gray-200 text-center">
+                      <button
+                        onClick={() => handleDispatch(flight)}
+                        className="border border-gray-400 bg-[#eee] px-2 text-[9px] hover:bg-[#ddd] active:border-t-gray-600 active:border-l-gray-600 active:border-white active:bg-[#d0d0d0] flex items-center gap-1"
+                      >
+                        <Plane className="w-2.5 h-2.5" /> BOOK
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
                 <tr>
                   <td colSpan={9} className="p-8 text-center text-gray-500 italic">
-                    No flights found. {dbFlights.length === 0 && !isLoading && "Try running Sync from Admin Dashboard."}
+                    No flights found.{' '}
+                    {dbFlights.length === 0 &&
+                      !isLoading &&
+                      'Try running Sync from Admin Dashboard.'}
                   </td>
                 </tr>
               )}
@@ -320,6 +342,6 @@ export const Flights = () => {
           </div>
         </div>
       </div>
-    </div >
+    </div>
   )
 }

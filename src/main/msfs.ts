@@ -254,7 +254,6 @@ export class MsfsService {
 
     // Only monitor if airborne or taking off
     if (!data.onGround) {
-      
       // Track Max Stats
       if (Math.abs(data.bankAngle) > this.maxBank) this.maxBank = Math.abs(data.bankAngle)
       if (Math.abs(data.gForce) > this.maxG) this.maxG = Math.abs(data.gForce)
@@ -267,9 +266,9 @@ export class MsfsService {
       // Penalty: Gear UP < 1,000 ft (Approach/Landing)
       // Logic: Descending, low altitude, gear up
       if (data.altitude < 1000 && data.vertical_speed < -100 && !data.gearDown) {
-         this.logPenalty('Landing Gear UP below 1,000ft (Approach)', 10)
+        this.logPenalty('Landing Gear UP below 1,000ft (Approach)', 10)
       }
-      
+
       // Penalty: Excessive Bank (> 40)
       if (Math.abs(data.bankAngle) > 40) {
         this.logPenalty('Excessive Bank Angle (> 40°)', 2)
@@ -285,9 +284,9 @@ export class MsfsService {
     const a =
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
       Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2)
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2)
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
     return R * c
   }
@@ -304,9 +303,13 @@ export class MsfsService {
         penalty: points
       })
       this.flightScore = Math.max(0, this.flightScore - points)
-      
+
       // Notify Frontend
-      this.window.webContents.send('flight-penalty', { message, points, totalScore: this.flightScore })
+      this.window.webContents.send('flight-penalty', {
+        message,
+        points,
+        totalScore: this.flightScore
+      })
     }
   }
 
@@ -320,12 +323,12 @@ export class MsfsService {
 
     if (isParked && !this.flightCompleteNotified && this.wasAirborne) {
       // Only fire if we actually flew (wasAirborne was set to true during flight)
-      
+
       console.log('[MSFS] Aircraft parked - flight complete')
 
       // Validate flight duration/distance (simple check: must have been airborne)
       if (this.flightLog.length === 0 && this.flightScore === 100) {
-           this.logPenalty('Perfect Flight', 0) // Just to have a log entry
+        this.logPenalty('Perfect Flight', 0) // Just to have a log entry
       }
 
       this.window.webContents.send('flight-complete', {
@@ -336,9 +339,9 @@ export class MsfsService {
         events: this.flightLog,
         distanceFlown: Math.round(this.totalDistance),
         stats: {
-            maxBank: this.maxBank,
-            maxG: this.maxG,
-            landingRate: 0 // Will be patched by landing reporter
+          maxBank: this.maxBank,
+          maxG: this.maxG,
+          landingRate: 0 // Will be patched by landing reporter
         }
       })
 
@@ -373,12 +376,12 @@ export class MsfsService {
   }
 
   calculateGrade(score: number): string {
-      if (score >= 95) return 'A+'
-      if (score >= 90) return 'A'
-      if (score >= 80) return 'B'
-      if (score >= 70) return 'C'
-      if (score >= 60) return 'D'
-      return 'F'
+    if (score >= 95) return 'A+'
+    if (score >= 90) return 'A'
+    if (score >= 80) return 'B'
+    if (score >= 70) return 'C'
+    if (score >= 60) return 'D'
+    return 'F'
   }
 
   retryConnection() {

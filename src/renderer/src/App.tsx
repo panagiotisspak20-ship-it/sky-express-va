@@ -11,6 +11,7 @@ import { FlightSummary } from './pages/FlightSummary'
 import { OFPViewer } from './pages/OFPViewer'
 import { Career } from './pages/Career'
 import { LiveMap } from './pages/LiveMap'
+import { PilotShop } from './pages/PilotShop'
 import { Settings } from './pages/Settings'
 import { SocialHub } from './pages/SocialHub'
 import { Support } from './pages/Support'
@@ -18,6 +19,7 @@ import { Dispatch } from './pages/Dispatch'
 import { FreeRoam } from './pages/FreeRoam'
 import { PirepLog } from './pages/PirepLog'
 import { PirepDetail } from './pages/PirepDetail'
+import { Tours } from './pages/Tours'
 import AdminDashboard from './pages/AdminDashboard'
 import { TutorialGuide } from './components/Tutorial'
 import { DataService } from './services/dataService'
@@ -81,8 +83,10 @@ export default function App() {
               <Route path="pireps" element={<PirepLog />} />
               <Route path="pirep/:id" element={<PirepDetail />} />
               <Route path="/career" element={<Career />} />
+              <Route path="/tours" element={<Tours />} />
               <Route path="/social" element={<SocialHub />} />
-              <Route path="/map" element={<LiveMap />} />
+              <Route path="shop" element={<PilotShop />} />
+              <Route path="map" element={<LiveMap />} />
               <Route path="support" element={<Support />} />
               <Route path="settings" element={<Settings />} />
             </Route>

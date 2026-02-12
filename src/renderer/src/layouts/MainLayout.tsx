@@ -6,11 +6,15 @@ import { useState, useEffect } from 'react'
 export const MainLayout: React.FC = () => {
   const navigate = useNavigate()
   const [userCallsign, setUserCallsign] = useState('Loading...')
+  const [userColor, setUserColor] = useState('')
   const [msfsConnected, setMsfsConnected] = useState(false)
 
   useEffect(() => {
     DataService.getProfile().then((p) => {
-      if (p?.callsign) setUserCallsign(p.callsign)
+      if (p) {
+        if (p.callsign) setUserCallsign(p.callsign)
+        if (p.equipped_color) setUserColor(p.equipped_color)
+      }
     })
 
     let cleanup: (() => void) | undefined
@@ -72,7 +76,7 @@ export const MainLayout: React.FC = () => {
           <div className="flex-1"></div>
           <div className="pl-3 border-l border-[#2c5282] flex items-center gap-2">
             <span className="text-slate-300">Pilot:</span>
-            <span className="font-bold text-[#e879a8]">{userCallsign}</span>
+            <span className={`font-bold ${userColor || 'text-[#e879a8]'}`}>{userCallsign}</span>
           </div>
         </footer>
       </div>

@@ -2,6 +2,8 @@ import { DataService } from '../services/dataService'
 import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import clsx from 'clsx'
+import { Globe } from 'lucide-react'
+import { WhoIsOnline } from './WhoIsOnline'
 
 // Retro-style emoji icons for that Windows XP feel
 const navItems = [
@@ -11,7 +13,9 @@ const navItems = [
   { name: 'Free Roam', icon: '🌍', path: '/free-roam' },
   { name: 'History', icon: '📜', path: '/flight-history' },
   { name: 'Career', icon: '🎖️', path: '/career' },
+  { name: 'Tours', icon: '🧭', path: '/tours' },
   { name: 'Community', icon: '👥', path: '/social' },
+  { name: 'Sky Store', icon: '🛍️', path: '/shop' },
   { name: 'Live Map', icon: '🗺️', path: '/map' },
   { name: 'PIREP', icon: '📝', path: '/pireps' },
   { name: 'Support', icon: '❓', path: '/support' },
@@ -54,7 +58,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
           <NavLink
             key={item.path}
             to={item.path}
-            data-tutorial={`sidebar-link-${item.name.toLowerCase().replace(' ', '-')}`}
+            data-tutorial={`sidebar - link - ${item.name.toLowerCase().replace(' ', '-')} `}
             className={({ isActive }) =>
               clsx(
                 'flex items-center gap-3 py-2.5 px-3 transition-all text-left rounded',
@@ -90,6 +94,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
           </NavLink>
         ))}
       </nav>
+
+      <WhoIsOnline />
 
       {/* Disclaimer */}
       <div className="px-2 py-2 bg-pink-50 border-t border-pink-200">

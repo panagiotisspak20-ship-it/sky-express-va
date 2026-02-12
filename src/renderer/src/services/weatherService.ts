@@ -24,7 +24,7 @@ export const WeatherService = {
         humidity: current.relative_humidity_2m,
         visibility: current.visibility || 10000,
         condition: this.getWeatherCondition(current.weather_code),
-        location: 'Athens Intl. (LGAV)' 
+        location: 'Athens Intl. (LGAV)'
       }
     } catch (error) {
       console.error('Failed to fetch weather', error)

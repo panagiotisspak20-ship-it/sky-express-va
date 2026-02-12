@@ -4,87 +4,107 @@ import { DataService, SystemAnnouncement } from '../services/dataService'
 import { supabase } from '../services/supabase'
 
 export function AnnouncementBanner(): React.ReactElement | null {
-    const [announcements, setAnnouncements] = useState<SystemAnnouncement[]>([])
-    const [currentIndex, setCurrentIndex] = useState(0)
-    const [isVisible, setIsVisible] = useState(true)
+  const [announcements, setAnnouncements] = useState<SystemAnnouncement[]>([])
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const [isVisible, setIsVisible] = useState(true)
 
-    const fetchAnnouncements = useCallback(async (): Promise<void> => {
-        try {
-            const data = await DataService.getActiveAnnouncements()
-            setAnnouncements(data)
-            if (data.length > 0) setIsVisible(true)
-        } catch (error) {
-            console.error('Failed to fetch announcements:', error)
+  const fetchAnnouncements = useCallback(async (): Promise<void> => {
+    try {
+      const data = await DataService.getActiveAnnouncements()
+
+      // Filter out dismissed announcements
+      const dismissedJson = localStorage.getItem('sky_express_dismissed_announcements')
+      const dismissedIds: string[] = dismissedJson ? JSON.parse(dismissedJson) : []
+
+      const activeAnnouncements = data.filter((a) => !dismissedIds.includes(a.id))
+
+      setAnnouncements(activeAnnouncements)
+      if (activeAnnouncements.length > 0) setIsVisible(true)
+    } catch (error) {
+      console.error('Failed to fetch announcements:', error)
+    }
+  }, [])
+
+  useEffect(() => {
+    // Initial fetch
+    fetchAnnouncements()
+
+    // Realtime subscription for instant updates
+    const channel = supabase
+      .channel('system-announcements-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'system_announcements' },
+        () => {
+          fetchAnnouncements()
         }
-    }, [])
+      )
+      .subscribe()
 
-    useEffect(() => {
-        // Initial fetch
-        fetchAnnouncements()
+    // Fallback: also poll every 30 seconds in case realtime is not enabled
+    const interval = setInterval(fetchAnnouncements, 30 * 1000)
 
-        // Realtime subscription for instant updates
-        const channel = supabase
-            .channel('system-announcements-realtime')
-            .on(
-                'postgres_changes',
-                { event: '*', schema: 'public', table: 'system_announcements' },
-                () => {
-                    fetchAnnouncements()
-                }
-            )
-            .subscribe()
+    return () => {
+      supabase.removeChannel(channel)
+      clearInterval(interval)
+    }
+  }, [fetchAnnouncements])
 
-        // Fallback: also poll every 30 seconds in case realtime is not enabled
-        const interval = setInterval(fetchAnnouncements, 30 * 1000)
+  // Rotate messages every 10 seconds if multiple
+  useEffect(() => {
+    if (announcements.length <= 1) return
 
-        return () => {
-            supabase.removeChannel(channel)
-            clearInterval(interval)
-        }
-    }, [fetchAnnouncements])
+    const timer = setInterval(() => {
+      setCurrentIndex((prev) => (prev + 1) % announcements.length)
+    }, 10000)
 
-    // Rotate messages every 10 seconds if multiple
-    useEffect(() => {
-        if (announcements.length <= 1) return
+    return () => clearInterval(timer)
+  }, [announcements.length])
 
-        const timer = setInterval(() => {
-            setCurrentIndex((prev) => (prev + 1) % announcements.length)
-        }, 10000)
+  if (!isVisible || announcements.length === 0) return null
 
-        return () => clearInterval(timer)
-    }, [announcements.length])
+  const currentAnnouncement = announcements[currentIndex]
 
-    if (!isVisible || announcements.length === 0) return null
+  const animationClass = announcements.length > 1 ? 'animate-fade-in' : ''
 
-    const currentAnnouncement = announcements[currentIndex]
+  const handleDismiss = () => {
+    // Save all current IDs to dismissed list
+    const dismissedJson = localStorage.getItem('sky_express_dismissed_announcements')
+    const dismissedIds: string[] = dismissedJson ? JSON.parse(dismissedJson) : []
 
-    const animationClass = announcements.length > 1 ? 'animate-fade-in' : ''
+    const newIds = announcements.map((a) => a.id)
+    const updatedIds = [...new Set([...dismissedIds, ...newIds])]
 
-    return (
-        <div className="bg-blue-600 text-white px-4 py-2 relative shadow-md z-50 flex items-center justify-between">
-            <div className="flex items-center gap-3 flex-1 overflow-hidden">
-                <div className="bg-white/20 p-1 rounded-full shrink-0 animate-pulse">
-                    <Megaphone className="w-4 h-4" />
-                </div>
-                <div className={`text-xs font-bold font-tahoma flex-1 truncate ${animationClass}`}>
-                    <span className="uppercase opacity-70 mr-2 border-r border-white/30 pr-2">
-                        System Broadcast
-                    </span>
-                    {currentAnnouncement.message}
-                    {announcements.length > 1 && (
-                        <span className="ml-2 text-[10px] opacity-50 font-normal">
-                            ({currentIndex + 1}/{announcements.length})
-                        </span>
-                    )}
-                </div>
-            </div>
-            <button
-                onClick={() => setIsVisible(false)}
-                className="text-white/70 hover:text-white hover:bg-white/20 p-1 rounded transition-colors ml-2"
-                title="Dismiss"
-            >
-                <X className="w-4 h-4" />
-            </button>
+    localStorage.setItem('sky_express_dismissed_announcements', JSON.stringify(updatedIds))
+
+    setIsVisible(false)
+  }
+
+  return (
+    <div className="bg-blue-600 text-white px-4 py-2 relative shadow-md z-50 flex items-center justify-between">
+      <div className="flex items-center gap-3 flex-1 overflow-hidden">
+        <div className="bg-white/20 p-1 rounded-full shrink-0 animate-pulse">
+          <Megaphone className="w-4 h-4" />
         </div>
-    )
+        <div className={`text-xs font-bold font-tahoma flex-1 truncate ${animationClass}`}>
+          <span className="uppercase opacity-70 mr-2 border-r border-white/30 pr-2">
+            System Broadcast
+          </span>
+          {currentAnnouncement.message}
+          {announcements.length > 1 && (
+            <span className="ml-2 text-[10px] opacity-50 font-normal">
+              ({currentIndex + 1}/{announcements.length})
+            </span>
+          )}
+        </div>
+      </div>
+      <button
+        onClick={handleDismiss}
+        className="text-white/70 hover:text-white hover:bg-white/20 p-1 rounded transition-colors ml-2"
+        title="Dismiss"
+      >
+        <X className="w-4 h-4" />
+      </button>
+    </div>
+  )
 }

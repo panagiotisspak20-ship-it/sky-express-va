@@ -19,8 +19,6 @@ autoUpdater.setFeedURL({
   repo: 'sky-express-va'
 })
 
-
-
 function createWindow(): void {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
