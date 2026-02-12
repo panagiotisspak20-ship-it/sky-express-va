@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { DataService, Tour, PilotTour } from '../services/dataService'
-import { MapPin, Trophy, Plane, ArrowRight, CheckCircle2 } from 'lucide-react'
+import { Trophy, Plane, ArrowRight, CheckCircle2 } from 'lucide-react'
 import clsx from 'clsx'
 
 export const Tours: React.FC = () => {
@@ -34,7 +34,7 @@ export const Tours: React.FC = () => {
     try {
       await DataService.joinTour(tourId)
       await fetchData() // Refresh to show progress
-    } catch (err) {
+    } catch {
       alert('Failed to join tour. You may already be in it.')
     }
   }

@@ -108,9 +108,9 @@ export const PilotShop = () => {
     }
 
     const handlePreview = (item: ShopItem) => {
-        if (item.type === 'background') setPreviewBackground(item.css_class)
-        if (item.type === 'frame') setPreviewFrame(item.css_class)
-        if (item.type === 'color') setPreviewColor(item.css_class)
+        if (item.type === 'background') setPreviewBackground(item.css_class || null)
+        if (item.type === 'frame') setPreviewFrame(item.css_class || null)
+        if (item.type === 'color') setPreviewColor(item.css_class || null)
     }
 
     const getOwnedItem = (itemId: string) => inventory.find((i) => i.item_id === itemId)

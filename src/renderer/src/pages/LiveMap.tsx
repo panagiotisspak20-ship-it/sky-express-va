@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import { DataService, ActiveFlight } from '../services/dataService'
-import { Plane, Navigation, Globe } from 'lucide-react'
+import { Globe } from 'lucide-react'
 
 // Fix generic Leaflet icon issue in Webpack/Vite
 // @ts-ignore
