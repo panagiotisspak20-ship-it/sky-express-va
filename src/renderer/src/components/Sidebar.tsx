@@ -2,7 +2,7 @@ import { DataService } from '../services/dataService'
 import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import clsx from 'clsx'
-import { Globe } from 'lucide-react'
+
 import { WhoIsOnline } from './WhoIsOnline'
 
 // Retro-style emoji icons for that Windows XP feel
