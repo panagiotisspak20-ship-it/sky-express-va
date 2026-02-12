@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { DataService, Tour, PilotTour } from '../services/dataService'
-import { Trophy, ArrowRight, CheckCircle2 } from 'lucide-react'
+import { Trophy, ArrowRight, CheckCircle2, Plane } from 'lucide-react'
 import clsx from 'clsx'
 
 export const Tours: React.FC = () => {
