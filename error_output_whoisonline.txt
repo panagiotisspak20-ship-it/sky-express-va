@@ -1,0 +1,1 @@
+src/renderer/src/components/WhoIsOnline.tsx(51,11): error TS6133: 'isFlying' is declared but its value is never read.

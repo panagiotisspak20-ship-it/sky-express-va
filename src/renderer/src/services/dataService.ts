@@ -19,7 +19,7 @@ export interface BookedFlight {
   blockFuel?: number // Block fuel in kg
   status: 'booked' | 'in-progress' | 'completed'
   // NEW: Store simbrief data
-  simbriefData?: any
+  ofpData?: any
   bookedAt: string // ISO timestamp
 }
 
