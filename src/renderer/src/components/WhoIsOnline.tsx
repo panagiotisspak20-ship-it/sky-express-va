@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Users, ChevronUp, ChevronDown, Plane } from 'lucide-react'
 import { DataService, OnlineUser, ActiveFlight } from '../services/dataService'
-import { RealtimeChannel } from '@supabase/supabase-js'
+
 
 export const WhoIsOnline = () => {
     const [onlinePilots, setOnlinePilots] = useState<ActiveFlight[]>([]) // Actually flying
