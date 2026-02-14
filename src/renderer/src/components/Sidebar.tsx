@@ -93,9 +93,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
             )}
           </NavLink>
         ))}
+        <WhoIsOnline />
       </nav>
-
-      <WhoIsOnline />
 
       {/* Disclaimer */}
       <div className="px-2 py-2 bg-pink-50 border-t border-pink-200">

@@ -133,7 +133,7 @@ export const PilotShop = () => {
                         Pilot Dashboard
                     </h1>
                     <p className={`text-xs font-medium flex items-center gap-1 drop-shadow-sm ${previewBackground ? 'text-white/80' : 'text-gray-600'}`}>
-                        Welcome, <span className={`font-bold text-lg ${previewColor || (previewBackground ? 'text-white' : 'text-blue-800')}`}>
+                        Welcome, <span className={`font-bold text-lg ${previewColor || (previewBackground ? 'text-white' : 'text-slate-900')}`}>
                             {profile?.callsign || 'Pilot'}
                         </span>
                         <span className={`text-[10px] px-2 py-0.5 rounded uppercase ml-2 border ${previewBackground ? 'bg-white/20 border-white/30 text-white' : 'bg-gray-200 border-gray-300 text-gray-600'}`}>
@@ -256,10 +256,10 @@ export const PilotShop = () => {
                         </button>
                     )}
                 </div>
-                <div className="bg-gradient-to-r from-[#1a365d] to-[#2c5282] px-4 py-2 rounded text-white shadow-md flex items-center gap-2">
-                    <span className="text-[10px] uppercase opacity-80">Balance</span>
-                    <span className={`text-xl font-mono font-bold ${isAdmin ? 'text-green-300' : 'text-yellow-300'}`}>
-                        {isAdmin ? 'ADMIN' : `€${balance.toLocaleString()}`}
+                <div className="inset-box px-3 py-1 flex items-center gap-2">
+                    <span className="text-[10px] uppercase text-gray-500 font-bold tracking-wider">Balance</span>
+                    <span className="text-lg font-bold text-slate-700">
+                        {isAdmin ? 'Unlimited' : `€${balance.toLocaleString()}`}
                     </span>
                 </div>
             </div>

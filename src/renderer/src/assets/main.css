@@ -102,3 +102,8 @@ body {
 .font-tahoma {
   font-family: 'Tahoma', 'Segoe UI', sans-serif;
 }
+
+/* Custom Gradients for DB-driven items (Safe from JIT pruning) */
+.bg-sky-corporate {
+  background: linear-gradient(135deg, #1a365d, #2c5282);
+}

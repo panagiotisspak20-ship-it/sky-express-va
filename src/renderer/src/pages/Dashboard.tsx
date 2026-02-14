@@ -120,11 +120,11 @@ export const Dashboard = () => {
               )}
             </div>
             <div>
-              <h1 className="text-xl font-bold uppercase tracking-tighter leading-none mb-1 drop-shadow-md">
+              <h1 className={`text-xl font-bold uppercase tracking-tighter leading-none mb-1 drop-shadow-md ${profile?.equipped_background?.includes('text-white') ? 'text-white' : 'text-slate-800'}`}>
                 Pilot Dashboard
               </h1>
-              <p className="text-xs font-medium flex items-center gap-1 drop-shadow-sm opacity-90">
-                Welcome, <span className={`font-bold text-lg ${profile?.equipped_color || 'text-blue-800'}`}>
+              <p className={`text-xs font-medium flex items-center gap-1 drop-shadow-sm opacity-90 ${profile?.equipped_background?.includes('text-white') ? 'text-white' : 'text-slate-600'}`}>
+                Welcome, <span className={`font-bold text-lg ${profile?.equipped_color || (profile?.equipped_background ? 'text-white' : 'text-slate-900')}`}>
                   {profile?.callsign || 'Pilot'}
                 </span>
                 <span className="text-[10px] bg-white/20 backdrop-blur-sm px-1.5 py-0.5 rounded border border-white/30 ml-2 shadow-sm">

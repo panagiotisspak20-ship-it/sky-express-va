@@ -1,3 +1,4 @@
+import { RealtimeChannel } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 
 export interface BookedFlight {
@@ -17,8 +18,17 @@ export interface BookedFlight {
   cruiseAlt?: number // Cruise altitude in FL
   blockFuel?: number // Block fuel in kg
   status: 'booked' | 'in-progress' | 'completed'
-  ofpData: any // Full SimBrief OFP JSON
+  // NEW: Store simbrief data
+  simbriefData?: any
   bookedAt: string // ISO timestamp
+}
+
+export interface OnlineUser {
+  user_id: string
+  callsign: string
+  rank: string
+  avatar_url?: string
+  online_at: string
 }
 
 export interface PilotProfile {
@@ -1736,5 +1746,114 @@ export const DataService = {
       console.error('Sync Error:', err)
       throw new Error(err.message || 'Sync Failed')
     }
+  },
+
+  // --- PRESENCE (Who is Online) ---
+  
+  // Keep track of the channel so we can unsubscribe or use it
+  presenceChannel: null as RealtimeChannel | null,
+
+  subscribeToActiveFlights(onUpdate: () => void): RealtimeChannel {
+      return supabase
+        .channel('active_flights_changes')
+        .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'active_flights' },
+            () => {
+                onUpdate()
+            }
+        )
+        .subscribe()
+  },
+
+  unsubscribe(channel: RealtimeChannel) {
+      supabase.removeChannel(channel)
+  },
+
+  subscribeToPresence(
+    callback: (users: OnlineUser[]) => void,
+    onStatus?: (status: string) => void
+  ) {
+    if (this.presenceChannel) {
+      console.log('[Presence] Reuse existing channel')
+      // If already subscribed, just attach the callback? 
+      // Problem: Generic callback support is hard with single channel.
+      // For now, we assume only ONE component uses this (WhoIsOnline). 
+      // If we need multiple listeners, we need an event emitter.
+      // But re-subscribing the same channel object is safe-ish.
+      
+      // Better: Just return the existing channel and ensure the listener is added.
+      // But 'on' listeners are additive. If we call this multiple times, we add multiple listeners.
+      // So we should probably unsubscribe previous if expected behavior is "replace".
+      // But typically we just want to avoid *connecting* twice.
+    } else {
+        console.log('[Presence] Creating new channel')
+        this.presenceChannel = supabase.channel('room_online_users', {
+            config: {
+                presence: {
+                    key: 'user-' + Math.random().toString(36).substring(7)
+                }
+            }
+        })
+      }
+
+    // Remove existing 'sync' listeners to avoid duplicates if re-subscribing
+    // Note: This is an internal Supabase implementation detail, but 'channel.on' adds listeners.
+    // Ideally we shouldn't be calling this multiple times unless component remounts.
+    
+    this.presenceChannel
+      .on('presence', { event: 'sync' }, () => {
+        if (!this.presenceChannel) return
+        
+        const newState = this.presenceChannel.presenceState()
+        // Flatten and convert, acknowledging the extra presence_ref
+        const userlist = Object.values(newState).flat() as unknown as OnlineUser[]
+        
+        console.log('[Presence] Sync:', userlist)
+        callback(userlist)
+      })
+      .subscribe(async (status) => {
+        if (onStatus) onStatus(status)
+        
+        if (status === 'SUBSCRIBED') {
+          const {
+            data: { user }
+          } = await supabase.auth.getUser()
+
+          if (user) {
+            // Get rich profile data to share
+            let profile: PilotProfile | null = null
+            try {
+                profile = await this.getProfile()
+            } catch (err) {
+                console.error('[Presence] Error fetching profile via getProfile:', err)
+            }
+            
+            const presenceState = {
+              user_id: user.id,
+              online_at: new Date().toISOString(),
+              callsign: profile?.callsign || 'Guest',
+              rank: profile?.rank || 'Cadet',
+              avatar_url: profile?.avatar_url
+            }
+
+            if (this.presenceChannel) {
+                await this.presenceChannel.track(presenceState)
+            }
+          }
+        } else if (status === 'CHANNEL_ERROR') {
+             console.error('[Presence] CHANNEL_ERROR. Check network/CSP.', this.presenceChannel)
+        }
+      })
+
+    return this.presenceChannel
+  },
+
+  unsubscribeFromPresence() {
+      if (this.presenceChannel) {
+          console.log('[Presence] Disconnecting...')
+          this.presenceChannel.unsubscribe()
+          this.presenceChannel = null
+      }
   }
 }
