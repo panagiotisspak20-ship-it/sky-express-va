@@ -3,7 +3,7 @@ import { DataService, PilotProfile, SystemAnnouncement } from '../services/dataS
 import { supabase } from '../services/supabase'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { pageVariants, staggerContainer, fadeInUp, slideDown } from '../utils/animations'
+import { pageVariants, slideDown, staggerContainer, fadeInUp } from '../utils/animations'
 import { Sidebar } from '../components/Sidebar'
 import {
   ShieldCheck,

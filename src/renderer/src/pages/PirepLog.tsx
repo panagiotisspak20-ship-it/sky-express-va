@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { History, LayoutList, Trophy, TrendingUp, AlertTriangle } from 'lucide-react'
+import { History, LayoutList, Trophy, TrendingUp, AlertTriangle, Trash2 } from 'lucide-react'
 import { DataService } from '../services/dataService'
 import { SkyLoader } from '../components/ui/SkyLoader'
+import { motion } from 'framer-motion'
+import { pageVariants, staggerContainer, fadeInUp, slideDown } from '../utils/animations'
 
 export const PirepLog = () => {
   const navigate = useNavigate()
@@ -33,8 +35,8 @@ export const PirepLog = () => {
   }
 
   return (
-    <div className="p-4 h-full flex flex-col font-tahoma bg-[#f0f0f0]">
-      <div className="flex justify-between items-center mb-4 px-1">
+    <motion.div variants={pageVariants} initial="hidden" animate="visible" className="p-4 h-full flex flex-col font-tahoma bg-[#f0f0f0]">
+      <motion.div variants={slideDown} className="flex justify-between items-center mb-4 px-1">
         <div className="flex items-center gap-2">
           <LayoutList className="w-6 h-6 text-blue-800" />
           <h1 className="text-xl font-bold text-[#333] uppercase tracking-tighter">
@@ -44,13 +46,13 @@ export const PirepLog = () => {
         <button onClick={loadPireps} className="text-xs text-blue-600 hover:underline">
           Refresh
         </button>
-      </div>
+      </motion.div>
 
-      <div className="flex-1 legacy-panel bg-white flex flex-col overflow-hidden">
-        <div className="bg-[#ddd] border-b border-[#999] p-2 flex justify-between items-center font-bold text-xs text-gray-700">
+      <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="flex-1 legacy-panel bg-white flex flex-col overflow-hidden">
+        <motion.div variants={fadeInUp} className="bg-[#ddd] border-b border-[#999] p-2 flex justify-between items-center font-bold text-xs text-gray-700">
           <span>FLIGHT LOG</span>
           <span>{pireps.length} REPORTS</span>
-        </div>
+        </motion.div>
 
         {loading ? (
           <div className="flex-1 flex items-center justify-center">
@@ -62,9 +64,10 @@ export const PirepLog = () => {
             <p>No PIREPs filed yet.</p>
           </div>
         ) : (
-          <div className="flex-1 overflow-y-auto p-2 space-y-2" data-tutorial="pirep-list">
+          <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="flex-1 overflow-y-auto p-2 space-y-2" data-tutorial="pirep-list">
             {pireps.map((p) => (
-              <div
+              <motion.div
+                variants={fadeInUp}
                 key={p.id}
                 onClick={() => navigate(`/pirep/${p.id}`)}
                 className="border border-gray-300 bg-white p-3 hover:bg-blue-50 cursor-pointer transition-colors shadow-sm flex items-center justify-between group"
@@ -119,12 +122,31 @@ export const PirepLog = () => {
                   {p.flight_events?.length > 0 && (
                     <AlertTriangle className="w-4 h-4 text-orange-400 opacity-50 group-hover:opacity-100" />
                   )}
+
+                  {/* Request Deletion */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      const reason = prompt(
+                        '⚠️ REQUEST FLIGHT DELETION\n\nThis flight will be reviewed by an admin before deletion.\nDeletions are only approved if the flight was a mistake.\n\nPlease explain why this flight should be deleted:'
+                      )
+                      if (reason && reason.trim()) {
+                        DataService.requestFlightDeletion(p.id, reason.trim())
+                          .then(() => alert('✅ Deletion request submitted. An admin will review it.'))
+                          .catch((err: Error) => alert('Failed: ' + err.message))
+                      }
+                    }}
+                    className="p-1 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                    title="Request Flight Deletion"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
-              </div>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         )}
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   )
 }
