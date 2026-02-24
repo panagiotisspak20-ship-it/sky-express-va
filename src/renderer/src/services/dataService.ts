@@ -46,6 +46,7 @@ export interface PilotProfile {
   equipped_color?: string
   simBriefUsername?: string
   simBriefId?: string
+  vatsimId?: string
   tutorialComplete?: boolean
   isAdmin?: boolean
   status?: 'active' | 'suspended' | 'banned'
@@ -64,6 +65,7 @@ export interface FlightLogEntry {
   distance?: number
   score: number
   earnings: number
+  landedAt?: string
   maxAltitude?: number
   maxSpeed?: number
   fuelUsed?: number
@@ -89,8 +91,40 @@ export interface FlightLogEntry {
     gearExtensionAlt?: number
     maxBankAngle?: number
     maxPitchAngle?: number
+    maxG?: number
     flapOverspeed?: boolean
   }
+  flightPath?: {
+    lat: number
+    lng: number
+    alt: number
+    speed: number
+    heading: number
+    time: string
+  }[]
+  landingData?: {
+    alt: number
+    vs: number
+    g: number
+    pitch: number
+    bank: number
+    time: string
+  }[]
+  // Flight Deletion fields
+  deleteRequested?: boolean
+  deleteReason?: string
+}
+
+export interface Aircraft {
+  id: string
+  registration: string
+  type: string
+  hub: string
+  current_location: string
+  total_hours: number
+  status: 'Available' | 'In Flight' | 'Maintenance'
+  condition: number
+  last_maintenance: string
 }
 
 const DEFAULT_PROFILE: PilotProfile = {
@@ -243,6 +277,49 @@ export interface Transaction {
 }
 
 export const DataService = {
+  // --- FLEET MANAGEMENT ---
+  async getFleet() {
+    const { data, error } = await supabase
+      .from('fleet')
+      .select('*')
+      .order('registration', { ascending: true })
+    
+    if (error) {
+      console.error('Error fetching fleet:', error)
+      return []
+    }
+    return data as Aircraft[]
+  },
+
+  async addAircraft(aircraft: Omit<Aircraft, 'id' | 'total_hours' | 'condition' | 'last_maintenance'>) {
+    const { data, error } = await supabase
+      .from('fleet')
+      .insert(aircraft)
+      .select()
+      .single()
+    
+    if (error) throw error
+    return data
+  },
+
+  async updateAircraft(id: string, updates: Partial<Aircraft>) {
+    const { error } = await supabase
+      .from('fleet')
+      .update(updates)
+      .eq('id', id)
+    
+    if (error) throw error
+  },
+
+  async deleteAircraft(id: string) {
+    const { error } = await supabase
+      .from('fleet')
+      .delete()
+      .eq('id', id)
+    
+    if (error) throw error
+  },
+
   // --- LIVE OPS ---
 
   async reportPosition(data: Partial<ActiveFlight>) {
@@ -611,6 +688,7 @@ export const DataService = {
           reputation: 100,
           simBriefUsername: data.simbrief_username,
           simBriefId: data.simbrief_id,
+          vatsimId: data.vatsim_id, // Bug N: return vatsimId from DB
           isAdmin: data.is_admin || false,
         status: data.status || 'active',
         equipped_background: data.equipped_background,
@@ -640,6 +718,7 @@ export const DataService = {
     if (updates.simBriefUsername !== undefined)
       dbUpdates.simbrief_username = updates.simBriefUsername
     if (updates.simBriefId !== undefined) dbUpdates.simbrief_id = updates.simBriefId
+    if (updates.vatsimId !== undefined) dbUpdates.vatsim_id = updates.vatsimId // Bug M: map vatsimId to DB
     if (updates.avatar_url !== undefined) dbUpdates.avatar_url = updates.avatar_url
 
     // Handle tutorial separately (local for now)
@@ -778,9 +857,20 @@ export const DataService = {
         duration: row.flight_time || 0,
         landingRate: row.landing_rate,
         distance: row.distance,
+        distanceFlown: row.distance_flown || row.distance,
         score: row.score ?? 100,
         earnings: row.revenue || 0,
-        events: row.flight_events || []
+        events: row.flight_events || [],
+        maxAltitude: row.flight_data?.maxAltitude || 0,
+        maxSpeed: row.flight_data?.maxSpeed || 0,
+        fuelUsed: row.flight_data?.fuelUsed || 0,
+        landedAt: row.flight_data?.landedAt || row.landed_at,
+        otp: row.flight_data?.otp || row.otp,
+        systemStats: row.flight_data?.systemStats || row.system_stats,
+        flightPath: row.flight_data?.flightPath || row.flight_path || [],
+        landingData: row.flight_data?.landingData || row.landing_data || [],
+        deleteRequested: row.delete_requested,
+        deleteReason: row.delete_reason
       }))
     }
 
@@ -800,6 +890,8 @@ export const DataService = {
       max_bank?: number
       max_g?: number
       landing_lights_penalty?: boolean
+      flightPath?: any[]
+      landingData?: any[]
     }
   ) {
     const log = await this.getFlightLog()
@@ -814,6 +906,13 @@ export const DataService = {
     if (api?.store) await api.store.set(key, newLog)
 
     // Update CLOUD stats (PIREP)
+    console.log('[DataService] Inserting to completed_flights:', {
+      pilot_id: user.id,
+      flight_number: entry.flightNumber,
+      departure_icao: entry.departure,
+      arrival_icao: entry.arrival,
+      score: entry.score
+    })
     const { error } = await supabase.from('completed_flights').insert({
       pilot_id: user.id,
       flight_number: entry.flightNumber,
@@ -824,14 +923,21 @@ export const DataService = {
       distance: entry.distanceFlown || entry.distance,
       landing_rate: entry.landingRate,
       revenue: entry.earnings,
-      score: entry.score || 100,
+      score: entry.score ?? 100,
       flight_events: entry.events || [],
-      max_bank: entry.max_bank || 0,
-      max_g: entry.max_g || 1,
-      landing_lights_penalty: entry.landing_lights_penalty || false
+      max_bank: entry.systemStats?.maxBankAngle || entry.max_bank || 0,
+      max_g: entry.systemStats?.maxG || entry.max_g || 1,
+      landing_lights_penalty: entry.systemStats?.landingLightsOffBelow10k || entry.landing_lights_penalty || false,
+      flight_path: entry.flightPath || [],
+      landing_data: entry.landingData || [],
+      flight_data: entry
     })
 
-    if (error) console.error('Error saving PIREP to cloud:', error)
+    if (error) {
+      console.error('Error saving PIREP to cloud:', error)
+      throw new Error(`Supabase insert failed: ${error.message}`)
+    }
+    console.log('[DataService] PIREP saved successfully!')
 
     // CHECK TOUR PROGRESS
     await this.checkTourProgress({ departure: entry.departure, arrival: entry.arrival })
@@ -1137,7 +1243,7 @@ export const DataService = {
   async getAllPilots(): Promise<PilotProfile[]> {
     const { data, error } = await supabase
       .from('profiles')
-      .select('*')
+      .select('*, rank:ranks(name)') // Bug O: join ranks table
       .order('flight_hours', { ascending: false })
 
     if (error) {
@@ -1146,13 +1252,14 @@ export const DataService = {
     }
 
     // Map to PilotProfile interface
-    return (data || []).map((p) => ({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (data || []).map((p: any) => ({
       id: p.id,
       callsign: p.callsign,
       avatar_url: p.avatar_url,
-      rank: 'Cadet', // Logic needed if rank stored in DB
+      rank: p.rank?.name || 'Cadet', // Bug O: use joined rank name
       homeBase: p.home_base,
-      currentLocation: (p.current_location as any)?.icao || p.home_base,
+      currentLocation: p.current_location?.icao || p.home_base,
       flightHours: Number(p.flight_hours),
       balance: Number(p.balance),
       reputation: 100,
@@ -1289,6 +1396,8 @@ export const DataService = {
           })
         ])
       }
+      // Bug P: Do NOT delete accepted requests — getConnectionStatus checks for them
+    } else {
       // Reject: delete request
       const { error: deleteError } = await supabase
         .from('friend_requests')
@@ -1364,6 +1473,117 @@ export const DataService = {
 
     const { error } = await supabase.from('profiles').update(dbUpdates).eq('id', pilotId)
     if (error) throw error
+  },
+
+  async runDeletionMigration() {
+    // This is a temporary setup query that we can call from the Admin Dashboard to bootstrap
+    // the deletion columns and the RPC since the local CLI failed.
+    const {
+      data: { user }
+    } = await supabase.auth.getUser()
+    if (!user) return
+
+    // Verify Admin
+    const { data: profile } = await supabase.from('profiles').select('is_admin').eq('id', user.id).single()
+    if (!profile?.is_admin) throw new Error("Unauthorized")
+
+    // We use a neat trick: execute SQL via Supabase RPC by creating a general-purpose query runner
+    // if one exists, OR we can just try to hit the edge functions/REST if applicable.
+    // However, since we can't easily run raw DDL from the JS client without a custom RPC,
+    // we will instead instruct the user to run the SQL in the Supabase Dashboard SQL Editor,
+    // OR we can create the RPC here if an exec sql function exists.
+    
+    // We will just try calling the RPC. If it fails, we know it's not setup.
+  },
+
+  // --- ADMIN & PILOT FLIGHT DELETIONS ---
+
+  async requestFlightDeletion(flightId: string, reason: string) {
+    const {
+      data: { user }
+    } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const { error } = await supabase
+      .from('completed_flights')
+      .update({
+        delete_requested: true,
+        delete_reason: reason
+      })
+      .eq('id', flightId)
+      // Safety check: Pilots can only request their own flights, or RLS will fail
+      .eq('pilot_id', user.id)
+
+    if (error) {
+       console.error('[DataService] update error:', error)
+       throw error
+    }
+  },
+
+  async getPendingDeletions(): Promise<(FlightLogEntry & { pilotCallsign?: string })[]> {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const { data, error } = await supabase
+      .from('completed_flights')
+      .select('*, profiles(callsign)')
+      .eq('delete_requested', true)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('Error fetching pending deletions:', error)
+      return []
+    }
+
+    return (data as any[]).map((row) => ({
+      ...row,
+      id: row.id,
+      date: row.created_at,
+      flightNumber: row.flight_number || '',
+      departure: row.departure_icao || '',
+      arrival: row.arrival_icao || '',
+      aircraft: row.aircraft_type || '',
+      duration: row.flight_time || 0,
+      landingRate: row.landing_rate,
+      distance: row.distance,
+      score: row.score ?? 100,
+      earnings: row.revenue || 0,
+      deleteRequested: row.delete_requested,
+      deleteReason: row.delete_reason,
+      pilotCallsign: row.profiles?.callsign || 'Unknown'
+    })) as any[]
+  },
+
+  async approveFlightDeletion(flightId: string) {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const { error } = await supabase.rpc('admin_approve_flight_deletion', {
+      p_flight_id: flightId
+    })
+
+    if (error) {
+      console.error('Error approving flight deletion:', error)
+      throw error
+    }
+  },
+
+  async rejectFlightDeletion(flightId: string) {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const { error } = await supabase
+      .from('completed_flights')
+      .update({
+        delete_requested: false,
+        delete_reason: null
+      })
+      .eq('id', flightId)
+
+    if (error) {
+      console.error('Error rejecting flight deletion:', error)
+      throw error
+    }
   },
 
   async acceptRequestFrom(targetId: string) {
@@ -1617,7 +1837,7 @@ export const DataService = {
 
           // Create Date for TODAY
           const depTime = new Date()
-          depTime.setHours(depH, depM, 0, 0)
+          depTime.setUTCHours(depH, depM, 0, 0) // Bug S: use UTC
 
           // Handle invalid date
           if (isNaN(depTime.getTime())) continue
@@ -1696,7 +1916,7 @@ export const DataService = {
 
             // Set time for current iteration day
             const depTime = new Date(currentDay)
-            depTime.setHours(depH, depM, 0, 0)
+            depTime.setUTCHours(depH, depM, 0, 0) // Bug S: use UTC
 
             if (isNaN(depTime.getTime())) continue
 

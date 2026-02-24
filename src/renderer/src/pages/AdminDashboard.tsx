@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { DataService, PilotProfile, SystemAnnouncement } from '../services/dataService'
 import { supabase } from '../services/supabase'
 import { useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import { pageVariants, staggerContainer, fadeInUp, slideDown } from '../utils/animations'
 import { Sidebar } from '../components/Sidebar'
 import {
   ShieldCheck,
@@ -50,7 +52,11 @@ export default function AdminDashboard(): React.ReactElement {
   const [syncResult, setSyncResult] = useState<string | null>(null)
 
   // Tabs
-  const [activeTab, setActiveTab] = useState<'support' | 'users' | 'announcements'>('support')
+  const [activeTab, setActiveTab] = useState<'support' | 'users' | 'announcements' | 'deletions'>('support')
+
+  // Deletion Requests State
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [deletionRequests, setDeletionRequests] = useState<any[]>([])
 
   // User Management State
   const [pilots, setPilots] = useState<PilotProfile[]>([])
@@ -114,12 +120,22 @@ export default function AdminDashboard(): React.ReactElement {
     selectedTicketRef.current = selectedTicket
   }, [selectedTicket])
 
+  const fetchDeletionRequests = useCallback(async (): Promise<void> => {
+    try {
+      const data = await DataService.getPendingDeletions()
+      setDeletionRequests(data)
+    } catch (error) {
+      console.error('Error fetching deletion requests:', error)
+    }
+  }, [])
+
   useEffect(() => {
     checkAdmin()
     fetchTickets()
     fetchPilots()
     fetchAnnouncements()
-  }, [checkAdmin, fetchTickets, fetchPilots, fetchAnnouncements])
+    fetchDeletionRequests()
+  }, [checkAdmin, fetchTickets, fetchPilots, fetchAnnouncements, fetchDeletionRequests])
 
   // Realtime Subscriptions (Stable)
   useEffect(() => {
@@ -354,7 +370,7 @@ export default function AdminDashboard(): React.ReactElement {
 
       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
         {/* Header */}
-        <div className="p-4 pb-2 border-b-2 border-white shadow-sm mb-2 flex items-center justify-between bg-white">
+        <motion.div variants={slideDown} initial="hidden" animate="visible" className="p-4 pb-2 border-b-2 border-white shadow-sm mb-2 flex items-center justify-between bg-white">
           <div>
             <h1 className="text-xl font-bold uppercase tracking-tighter text-[#333] flex items-center gap-2">
               <ShieldCheck className="w-6 h-6 text-blue-800" />
@@ -390,12 +406,32 @@ export default function AdminDashboard(): React.ReactElement {
             >
               <Megaphone className="w-4 h-4" /> Announcements
             </button>
+            <button
+              onClick={() => setActiveTab('deletions')}
+              className={`px-4 py-2 text-xs font-bold uppercase rounded transition-colors flex items-center gap-2 ${activeTab === 'deletions'
+                ? 'bg-red-600 text-white shadow-md'
+                : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                }`}
+            >
+              <Trash2 className="w-4 h-4" /> Deletions
+              {deletionRequests.length > 0 && (
+                <span className="bg-red-100 text-red-800 text-[9px] px-1.5 rounded-full font-bold">
+                  {deletionRequests.length}
+                </span>
+              )}
+            </button>
           </div>
-        </div>
+        </motion.div>
 
         {/* Content */}
         {/* Content Area based on Tab */}
-        <div className="flex-1 overflow-hidden relative">
+        <motion.div
+          className="flex-1 overflow-hidden relative"
+          variants={pageVariants}
+          initial="hidden"
+          animate="visible"
+          key={activeTab} // Retrigger animation on tab change
+        >
           {activeTab === 'support' && (
             <div className="absolute inset-0 p-4 pt-0 overflow-hidden flex gap-4">
               {/* Ticket List */}
@@ -422,9 +458,10 @@ export default function AdminDashboard(): React.ReactElement {
                     <p className="text-gray-500 text-xs italic">No tickets found.</p>
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-1 overflow-y-auto pr-1 flex-1">
+                  <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="flex flex-col gap-1 overflow-y-auto pr-1 flex-1">
                     {tickets.map((ticket) => (
-                      <button
+                      <motion.button
+                        variants={fadeInUp}
                         key={ticket.id}
                         onClick={() => handleTicketClick(ticket)}
                         className={`legacy-panel text-left p-2 transition-all flex flex-col gap-1 group ${selectedTicket?.id === ticket.id
@@ -456,9 +493,9 @@ export default function AdminDashboard(): React.ReactElement {
                             {ticket.profiles?.callsign || 'Unknown'}
                           </span>
                         </div>
-                      </button>
+                      </motion.button>
                     ))}
-                  </div>
+                  </motion.div>
                 )}
               </div>
 
@@ -617,9 +654,10 @@ export default function AdminDashboard(): React.ReactElement {
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pb-8">
+              <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pb-8">
                 {filteredPilots.map((pilot) => (
-                  <div
+                  <motion.div
+                    variants={fadeInUp}
                     key={pilot.id}
                     className={`bg-white border rounded shadow-sm p-3 relative ${pilot.status === 'banned' ? 'border-red-300 bg-red-50' : 'border-gray-200'
                       }`}
@@ -698,9 +736,9 @@ export default function AdminDashboard(): React.ReactElement {
                         </button>
                       )}
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
-              </div>
+              </motion.div>
             </div>
           )}
 
@@ -732,14 +770,15 @@ export default function AdminDashboard(): React.ReactElement {
                 {/* List */}
                 <div className="flex-1">
                   <h3 className="font-bold text-gray-700 mb-3 ml-1">Active Announcements</h3>
-                  <div className="space-y-2">
+                  <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-2">
                     {announcements.length === 0 ? (
                       <div className="text-gray-400 text-sm italic p-4 text-center border-dashed border-2 rounded">
                         No active announcements.
                       </div>
                     ) : (
                       announcements.map((a) => (
-                        <div
+                        <motion.div
+                          variants={fadeInUp}
                           key={a.id}
                           className="bg-white border border-l-4 border-l-blue-500 shadow-sm p-4 rounded flex justify-between items-start"
                         >
@@ -764,15 +803,107 @@ export default function AdminDashboard(): React.ReactElement {
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
-                        </div>
+                        </motion.div>
                       ))
                     )}
-                  </div>
+                  </motion.div>
                 </div>
               </div>
             </div>
           )}
-        </div>
+
+          {activeTab === 'deletions' && (
+            <div className="absolute inset-0 p-4 pt-0 overflow-y-auto">
+              <div className="mb-4 flex justify-between items-center">
+                <h3 className="font-bold text-gray-700 flex items-center gap-2">
+                  <Trash2 className="w-4 h-4 text-red-600" /> Flight Deletion Requests
+                </h3>
+                <button
+                  onClick={fetchDeletionRequests}
+                  className="btn-classic px-4 py-2 text-xs flex items-center gap-1"
+                >
+                  <RefreshCw className="w-3 h-3" /> Refresh
+                </button>
+              </div>
+
+              {deletionRequests.length === 0 ? (
+                <div className="text-gray-400 text-sm italic p-8 text-center border-dashed border-2 rounded">
+                  No deletion requests found.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {deletionRequests.map((req) => (
+                    <div
+                      key={req.id}
+                      className="bg-white border rounded shadow-sm p-4 border-l-4 border-l-amber-500"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="flex items-center gap-3 mb-2">
+                            <span className="font-bold text-blue-900 text-lg">{req.flightNumber}</span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded uppercase bg-amber-100 text-amber-800 border border-amber-200">
+                              PENDING
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-600 mb-1">
+                            <span className="font-bold">Pilot:</span> {req.pilotCallsign}
+                          </div>
+                          <div className="text-xs text-gray-600 mb-1">
+                            <span className="font-bold">Route:</span> {req.departure} ➔ {req.arrival} ({req.aircraft})
+                          </div>
+                          <div className="text-xs text-gray-600 mb-1">
+                            <span className="font-bold">Income Revert:</span> €{req.earnings} | -{req.duration.toFixed(1)}m
+                          </div>
+                          <div className="text-xs text-gray-600 mb-1">
+                            <span className="font-bold">Reason:</span> {req.deleteReason}
+                          </div>
+                          <div className="text-[10px] text-gray-400">
+                            Requested: {new Date(req.date).toLocaleString()}
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <button
+                            onClick={async () => {
+                              if (!confirm(`APPROVE deletion of flight ${req.flightNumber}?\n\nThis will safely deduct the flight earnings and hours from the pilot, and permanently delete the record.`))
+                                return
+                              try {
+                                await DataService.approveFlightDeletion(req.id)
+                                alert('Flight deleted successfully. Stats have been safely negated.')
+                                fetchDeletionRequests()
+                              } catch (err) {
+                                console.error(err)
+                                alert('Failed to approve deletion.')
+                              }
+                            }}
+                            className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded flex items-center gap-1"
+                          >
+                            <CheckCircle className="w-3 h-3" /> Approve & Delete
+                          </button>
+                          <button
+                            onClick={async () => {
+                              try {
+                                await DataService.rejectFlightDeletion(req.id)
+                                alert('Deletion Request rejected. Flight kept in history.')
+                                fetchDeletionRequests()
+                              } catch (err) {
+                                console.error(err)
+                                alert('Failed to reject request.')
+                              }
+                            }}
+                            className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 text-xs font-bold rounded border border-red-300 flex items-center gap-1"
+                          >
+                            <X className="w-3 h-3" /> Reject
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </motion.div>
 
         {/* Edit Pilot Modal */}
         {editingPilot && (
@@ -909,6 +1040,6 @@ export default function AdminDashboard(): React.ReactElement {
           )}
         </div>
       </div>
-    </div>
+    </div >
   )
 }
