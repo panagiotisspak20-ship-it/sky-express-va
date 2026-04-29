@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Bell, MessageSquare, LifeBuoy, X, Users } from 'lucide-react'
+import { Bell, MessageSquare, LifeBuoy, X, Users, CheckCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { DataService, FriendRequest, DirectMessage, SupportMessage } from '../services/dataService'
 import { supabase } from '../services/supabase'
@@ -297,31 +297,39 @@ export const NotificationCenter = (): React.ReactElement => {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -10, scale: 0.95 }}
             transition={{ duration: 0.2 }}
-            className="absolute right-0 top-full mt-2 w-80 bg-[#f0f0f0] border-2 border-white shadow-[2px_2px_0px_rgba(0,0,0,0.2)] z-[100] origin-top-right font-tahoma text-xs"
+            className="absolute right-0 top-full mt-3 w-80 lg:w-96 bg-white rounded-2xl shadow-xl border border-slate-100 z-[100] origin-top-right font-sans overflow-hidden text-sm flex flex-col max-h-[85vh]"
           >
-            <div className="bg-gradient-to-r from-blue-800 to-blue-600 text-white px-3 py-2 font-bold flex justify-between items-center border-b border-blue-900">
-              <span>NOTIFICATIONS</span>
+            {/* Header */}
+            <div className="bg-slate-50 text-slate-800 px-5 py-4 font-bold flex justify-between items-center border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-2">
+                <Bell className="w-4 h-4 text-blue-500" />
+                <span>NOTIFICATIONS</span>
+              </div>
+              <div className="flex items-center gap-3">
                 {visibleNotifications.length > 0 && (
                   <button
                     onClick={handleClearAll}
-                    className="text-[10px] text-blue-200 hover:text-white underline mr-2"
+                    className="text-xs text-slate-400 hover:text-blue-600 font-semibold transition-colors"
                     title="Clear All"
                   >
                     Clear All
                   </button>
                 )}
-                <button onClick={() => setIsOpen(false)} className="hover:text-red-300">
-                  <X className="w-3 h-3" />
+                <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-red-500 transition-colors bg-white hover:bg-red-50 p-1.5 rounded-full shadow-sm border border-slate-100">
+                  <X className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
 
-            <div className="max-h-80 overflow-y-auto inset-shadow bg-white">
+            {/* List */}
+            <div className="overflow-y-auto flex-1 bg-white relative">
               {loading && visibleNotifications.length === 0 ? (
-                <div className="p-4 text-center text-gray-500 italic">Checking...</div>
+                <div className="p-8 text-center text-slate-400 italic flex items-center justify-center gap-2">
+                  <div className="w-4 h-4 border-2 border-slate-300 border-t-blue-500 rounded-full animate-spin"></div>
+                  Checking...
+                </div>
               ) : visibleNotifications.length > 0 ? (
-                <div>
+                <div className="flex flex-col">
                   <AnimatePresence mode="popLayout">
                     {visibleNotifications.map((notif) => (
                       <motion.div
@@ -331,50 +339,56 @@ export const NotificationCenter = (): React.ReactElement => {
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: 20 }}
                         onClick={() => handleNotificationClick(notif)}
-                        className={`p-3 border-b border-gray-100 cursor-pointer group transition-colors relative ${seenIds.includes(notif.id)
-                          ? 'bg-white hover:bg-gray-50'
-                          : 'bg-blue-50 hover:bg-blue-100'
-                          }`}
+                        className={`p-4 border-b border-slate-50 cursor-pointer group transition-all relative overflow-hidden ${
+                          seenIds.includes(notif.id)
+                            ? 'bg-white hover:bg-slate-50/80'
+                            : 'bg-blue-50/40 hover:bg-blue-50'
+                        }`}
                       >
+                        {!seenIds.includes(notif.id) && (
+                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 rounded-r"></div>
+                        )}
+                        
                         {/* Dismiss Button */}
                         <button
                           onClick={(e) => handleDismiss(e, notif.id)}
-                          className="absolute top-2 right-2 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1"
+                          className="absolute top-3 right-3 text-slate-400 hover:text-red-500 bg-white hover:bg-red-50 rounded-full shadow-sm border border-slate-100 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 z-10"
                           title="Dismiss"
                         >
-                          <X className="w-3 h-3" />
+                          <X className="w-3.5 h-3.5" />
                         </button>
 
-                        <div className="flex items-start gap-3 pr-4">
+                        <div className="flex items-start gap-4 pr-6">
                           <div
-                            className={`mt-0.5 p-1.5 rounded-full ${notif.type === 'dm'
-                              ? 'bg-blue-100 text-blue-600'
-                              : notif.type === 'support'
-                                ? 'bg-red-100 text-red-600'
-                                : 'bg-green-100 text-green-600'
-                              }`}
+                            className={`p-2.5 rounded-xl shadow-sm border ${
+                              notif.type === 'dm'
+                                ? 'bg-blue-50 border-blue-100 text-blue-600'
+                                : notif.type === 'support'
+                                  ? 'bg-red-50 border-red-100 text-red-600'
+                                  : 'bg-emerald-50 border-emerald-100 text-emerald-600'
+                            }`}
                           >
                             {notif.type === 'dm' ? (
-                              <MessageSquare className="w-3 h-3" />
+                              <MessageSquare className="w-4 h-4" />
                             ) : notif.type === 'support' ? (
-                              <LifeBuoy className="w-3 h-3" />
+                              <LifeBuoy className="w-4 h-4" />
                             ) : (
-                              <Users className="w-3 h-3" />
+                              <Users className="w-4 h-4" />
                             )}
                           </div>
-                          <div className="flex-1">
-                            <div className="flex justify-between items-start mb-0.5">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex justify-between items-start mb-1">
                               <span
-                                className={`font-bold ${seenIds.includes(notif.id) ? 'text-gray-600' : 'text-gray-900'}`}
+                                className={`font-bold truncate pr-3 ${seenIds.includes(notif.id) ? 'text-slate-600' : 'text-slate-800'}`}
                               >
                                 {notif.title}
                               </span>
-                              <span className="text-[9px] text-gray-400 whitespace-nowrap ml-2">
+                              <span className="text-[10px] font-medium text-slate-400 whitespace-nowrap pt-0.5">
                                 {notif.time}
                               </span>
                             </div>
                             <p
-                              className={`${seenIds.includes(notif.id) ? 'text-gray-500' : 'text-gray-700'} line-clamp-2 leading-tight`}
+                              className={`text-xs ${seenIds.includes(notif.id) ? 'text-slate-500' : 'text-slate-600'} line-clamp-2 leading-relaxed`}
                             >
                               {notif.message}
                             </p>
@@ -382,9 +396,9 @@ export const NotificationCenter = (): React.ReactElement => {
                             {notif.type === 'request' && (
                               <button
                                 onClick={(e) => handleAcceptRequest(e, notif)}
-                                className="mt-2 text-[10px] bg-green-600 text-white px-2 py-1 rounded font-bold hover:bg-green-700 w-full shadow-sm"
+                                className="mt-3 text-xs bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold w-full transition-colors shadow-sm flex items-center justify-center gap-2"
                               >
-                                ACCEPT REQUEST
+                                <CheckCircle className="w-3.5 h-3.5" /> ACCEPT REQUEST
                               </button>
                             )}
                           </div>
@@ -394,16 +408,20 @@ export const NotificationCenter = (): React.ReactElement => {
                   </AnimatePresence>
                 </div>
               ) : (
-                <div className="p-8 text-center text-gray-400 flex flex-col items-center gap-2">
-                  <Bell className="w-6 h-6 opacity-20" />
-                  <span>No new notifications</span>
+                <div className="p-10 text-center flex flex-col items-center justify-center gap-3">
+                  <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-2">
+                    <Bell className="w-8 h-8 text-slate-300" />
+                  </div>
+                  <span className="text-slate-400 font-medium">You&apos;re all caught up!</span>
+                  <span className="text-slate-400 text-xs">No new notifications.</span>
                 </div>
               )}
             </div>
 
-            <div className="bg-[#e0e0e0] p-1 border-t border-white text-center flex justify-between px-2 items-center">
-              <span className="text-[9px] text-gray-500">Auto-refreshing</span>
-              <span className="text-[9px] text-gray-400">{visibleNotifications.length} items</span>
+            {/* Footer */}
+            <div className="bg-slate-50 p-2.5 border-t border-slate-100 text-center flex justify-between px-5 items-center shrink-0">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 flex items-center gap-1.5"><div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></div> Live Updates</span>
+              <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded-full border border-slate-200">{visibleNotifications.length} items</span>
             </div>
           </motion.div>
         )}

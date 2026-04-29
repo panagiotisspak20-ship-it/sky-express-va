@@ -2,6 +2,7 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { vatsimService } from './vatsim'
 import { autoUpdater } from 'electron-updater'
 import log from 'electron-log'
 
@@ -32,8 +33,7 @@ function createWindow(): void {
     autoHideMenuBar: true,
     icon, // Set icon for all platforms (Windows/Linux)
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      preload: join(__dirname, '../preload/index.js')
     }
   })
 
@@ -49,7 +49,15 @@ function createWindow(): void {
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    // #K: Only allow http/https URLs to be opened externally
+    try {
+      const url = new URL(details.url)
+      if (url.protocol === 'https:' || url.protocol === 'http:') {
+        shell.openExternal(details.url)
+      }
+    } catch {
+      // Invalid URL, don't open
+    }
     return { action: 'deny' }
   })
 
@@ -87,20 +95,34 @@ function createWindow(): void {
   })
 
   // Initialize MSFS Service
+  console.log('[Main] Starting MSFS module import...')
   import('./msfs')
     .then(({ MsfsService }) => {
-      const msfsService = new MsfsService(mainWindow)
+      console.log('[Main] MSFS module loaded, creating service...')
+      
+      // Store reference but don't await connection for IPC registration
+      let msfsService: any = null
+      
+      try {
+        msfsService = new MsfsService(mainWindow)
+      } catch (err) {
+        console.log('[Main] Error creating MsfsService:', err)
+      }
 
       // Handle get-status requests from renderer
       ipcMain.handle('msfs-get-status', () => {
-        return msfsService.isConnected()
+        const status = msfsService ? msfsService.isConnected() : false
+        console.log('[Main] msfs-get-status called, returning:', status)
+        return status
       })
 
       // Handle reconnect requests from renderer
       ipcMain.handle('msfs-reconnect', () => {
         console.log('[Main] MSFS reconnect requested')
-        msfsService.connect()
+        if (msfsService) msfsService.connect()
       })
+      
+      console.log('[Main] MSFS IPC handlers registered')
     })
     .catch((err) => {
       console.log('[Main] Failed to load MSFS module:', err)
@@ -126,21 +148,23 @@ app.whenReady().then(() => {
 
   // Data Persistence IPC
   let store
-  import('electron-store').then(({ default: Store }) => {
-    store = new Store()
+  import('electron-store')
+    .then(({ default: Store }) => {
+      store = new Store()
 
-    ipcMain.handle('store-get', (_, key) => {
-      return store.get(key)
-    })
+      ipcMain.handle('store-get', (_, key) => {
+        return store.get(key)
+      })
 
-    ipcMain.handle('store-set', (_, key, value) => {
-      store.set(key, value)
-    })
+      ipcMain.handle('store-set', (_, key, value) => {
+        store.set(key, value)
+      })
 
-    ipcMain.handle('store-delete', (_, key) => {
-      store.delete(key)
+      ipcMain.handle('store-delete', (_, key) => {
+        store.delete(key)
+      })
     })
-  })
+    .catch(console.error)
 
   // Weather IPC
   ipcMain.handle('get-weather', async (_, lat, lon) => {
@@ -163,17 +187,36 @@ app.whenReady().then(() => {
       if (!airlineIata || !apiKey) throw new Error('Missing arguments')
       console.log(`[Main] Fetching AirLabs schedules for ${airlineIata}`)
 
-      const response = await fetch(
-        `https://airlabs.co/api/v9/schedules?airline_iata=${airlineIata}&api_key=${apiKey}`
-      )
+      let allSchedules: any[] = []
+      let offset = 0
+      const limit = 50 // Free tier max per request
 
-      if (!response.ok) {
-        const text = await response.text()
-        throw new Error(`AirLabs API Error: ${response.status} - ${text}`)
+      while (true) {
+        const response = await fetch(
+          `https://airlabs.co/api/v9/schedules?airline_iata=${encodeURIComponent(airlineIata)}&api_key=${encodeURIComponent(apiKey)}&limit=${limit}&offset=${offset}`
+        )
+
+        if (!response.ok) {
+          const text = await response.text()
+          throw new Error(`AirLabs API Error: ${response.status} - ${text}`)
+        }
+
+        const data = await response.json()
+        const items = data.response || []
+        const hasMore = data.request?.has_more ?? false
+        
+        console.log(`[Main] AirLabs page offset=${offset}: got ${items.length} routes, has_more=${hasMore}`)
+        allSchedules = allSchedules.concat(items)
+        
+        if (!hasMore || items.length === 0) {
+          break
+        }
+        
+        offset += items.length
       }
 
-      const data = await response.json()
-      return data
+      console.log(`[Main] AirLabs TOTAL unique routes fetched: ${allSchedules.length}`)
+      return { response: allSchedules }
     } catch (error) {
       console.error('Main Process AirLabs Fetch Error:', error)
       throw error
@@ -184,7 +227,7 @@ app.whenReady().then(() => {
   ipcMain.handle('get-metar', async (_, icao) => {
     try {
       console.log(`[Main] Fetching METAR for ${icao}`)
-      const response = await fetch(`https://metar.vatsim.net/${icao}`)
+      const response = await fetch(`https://metar.vatsim.net/${encodeURIComponent(icao)}`)
       if (!response.ok) throw new Error('Failed to fetch METAR')
       return await response.text()
     } catch (error) {
@@ -224,6 +267,25 @@ app.whenReady().then(() => {
 
   ipcMain.handle('start-download', () => {
     return autoUpdater.downloadUpdate()
+  })
+
+  // VATSIM 
+  ipcMain.handle('vatsim-get-pilot', async (_, vatsimId: string) => {
+    try {
+      return await vatsimService.getPilot(vatsimId)
+    } catch (error) {
+      console.error('[Main] VATSIM Fetch Error:', error)
+      return null
+    }
+  })
+
+  ipcMain.handle('vatsim-get-all', async () => {
+    try {
+      return await vatsimService.getAllPilots()
+    } catch (error) {
+      console.error('[Main] VATSIM Fetch All Error:', error)
+      return []
+    }
   })
 
   ipcMain.handle('quit-and-install', () => {

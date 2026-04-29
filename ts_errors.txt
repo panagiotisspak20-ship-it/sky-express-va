@@ -1,0 +1,3 @@
+src/renderer/src/pages/BookedFlights.tsx(68,10): error TS6133: 'flightEvents' is declared but its value is never read.
+src/renderer/src/pages/BookedFlights.tsx(987,31): error TS2304: Cannot find name 'getDelayStatus'.
+src/renderer/src/pages/Fleet.tsx(9,63): error TS2305: Module '"../utils/animations"' has no exported member 'popIn'.

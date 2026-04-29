@@ -106,22 +106,7 @@ const SKY_EXPRESS_AIRPORTS = new Set([
 ])
 
 // Valid Sky Express aircraft types
-const VALID_AIRCRAFT = [
-  'ATR 42',
-  'ATR42',
-  'ATR-42',
-  'ATR 72',
-  'ATR72',
-  'ATR-72',
-  'A320',
-  'A320neo',
-  'A320-200',
-  'A321',
-  'A321neo',
-  'A321-200',
-  'AIRBUS A320',
-  'AIRBUS A321'
-]
+const VALID_AIRCRAFT = ['A20N', 'A320', 'AT46', 'AT76']
 
 /**
  * Validates if a flight number belongs to Sky Express

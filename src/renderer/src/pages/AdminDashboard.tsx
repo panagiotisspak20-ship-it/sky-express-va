@@ -4,6 +4,8 @@ import { supabase } from '../services/supabase'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { pageVariants, slideDown, staggerContainer, fadeInUp } from '../utils/animations'
+import { toastConfirm } from '../utils/toastConfirm'
+import toast from 'react-hot-toast'
 import { Sidebar } from '../components/Sidebar'
 import {
   ShieldCheck,
@@ -52,7 +54,9 @@ export default function AdminDashboard(): React.ReactElement {
   const [syncResult, setSyncResult] = useState<string | null>(null)
 
   // Tabs
-  const [activeTab, setActiveTab] = useState<'support' | 'users' | 'announcements' | 'deletions'>('support')
+  const [activeTab, setActiveTab] = useState<'support' | 'users' | 'announcements' | 'deletions'>(
+    'support'
+  )
 
   // Deletion Requests State
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -68,6 +72,8 @@ export default function AdminDashboard(): React.ReactElement {
   // Announcements State
   const [announcements, setAnnouncements] = useState<SystemAnnouncement[]>([])
   const [newAnnouncement, setNewAnnouncement] = useState('')
+  const [editingAnnouncementId, setEditingAnnouncementId] = useState<string | null>(null)
+  const [editAnnouncementText, setEditAnnouncementText] = useState('')
 
   // Check admin status
   const checkAdmin = useCallback(async (): Promise<void> => {
@@ -106,7 +112,9 @@ export default function AdminDashboard(): React.ReactElement {
 
   const fetchAnnouncements = useCallback(async (): Promise<void> => {
     try {
+      console.log('📢 Admin: Fetching announcements...')
       const data = await DataService.getActiveAnnouncements()
+      console.log('📢 Admin: Got announcements:', data)
       setAnnouncements(data)
     } catch (error) {
       console.error('Error fetching announcements:', error)
@@ -166,6 +174,22 @@ export default function AdminDashboard(): React.ReactElement {
           fetchTickets()
         }
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'completed_flights' },
+        (payload) => {
+          console.log('✈️ Flight Update (deletion):', payload)
+          fetchDeletionRequests()
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'system_announcements' },
+        (payload) => {
+          console.log('📢 Announcement Update:', payload)
+          fetchAnnouncements()
+        }
+      )
       .subscribe((status) => {
         console.log('🔌 Subscription Status:', status)
       })
@@ -174,7 +198,7 @@ export default function AdminDashboard(): React.ReactElement {
       console.log('🔌 Cleaning up subscription...')
       supabase.removeChannel(channel)
     }
-  }, [fetchTickets]) // Removed selectedTicket from dependency
+  }, [fetchTickets, fetchDeletionRequests, fetchAnnouncements]) // Removed selectedTicket from dependency
 
   const fetchMessages = async (ticketId: string): Promise<void> => {
     setLoadingMessages(true)
@@ -191,6 +215,7 @@ export default function AdminDashboard(): React.ReactElement {
   const handleTicketClick = (ticket: SupportTicket): void => {
     setSelectedTicket(ticket)
     setResponseText('')
+    fetchMessages(ticket.id)
   }
 
   const handleSendResponse = async (): Promise<void> => {
@@ -203,7 +228,7 @@ export default function AdminDashboard(): React.ReactElement {
       fetchMessages(selectedTicket.id)
     } catch (error) {
       console.error('Error sending response:', error)
-      alert('Failed to send response. Please try again.')
+      toast.error('Failed to send response. Please try again.')
     } finally {
       setSending(false)
     }
@@ -211,7 +236,8 @@ export default function AdminDashboard(): React.ReactElement {
 
   const handleResolveTicket = async (): Promise<void> => {
     if (!selectedTicket) return
-    if (!confirm('Are you sure you want to mark this ticket as RESOLVED?')) return
+    const confirmed = await toastConfirm('Are you sure you want to mark this ticket as RESOLVED?')
+    if (!confirmed) return
 
     try {
       await DataService.resolveTicket(selectedTicket.id)
@@ -222,14 +248,16 @@ export default function AdminDashboard(): React.ReactElement {
       setSelectedTicket((prev) => (prev ? { ...prev, status: 'resolved' } : null))
     } catch (error) {
       console.error('Error resolving ticket:', error)
-      alert('Failed to resolve ticket.')
+      toast.error('Failed to resolve ticket.')
     }
   }
 
   const handleDeleteTicket = async (): Promise<void> => {
     if (!selectedTicket) return
-    if (!confirm('Are you sure you want to DELETE this ticket? This action cannot be undone.'))
-      return
+    const confirmed = await toastConfirm(
+      'Are you sure you want to DELETE this ticket? This action cannot be undone.'
+    )
+    if (!confirmed) return
 
     try {
       await DataService.deleteSupportTicket(selectedTicket.id)
@@ -238,13 +266,13 @@ export default function AdminDashboard(): React.ReactElement {
       setSelectedTicket(null)
     } catch (error) {
       console.error('Error deleting ticket:', error)
-      alert('Failed to delete ticket.')
+      toast.error('Failed to delete ticket.')
     }
   }
 
   const handleSyncFlights = async (): Promise<void> => {
     if (!apiKey) {
-      alert('Please enter your AirLabs API Key')
+      toast.error('Please enter your AirLabs API Key')
       return
     }
     setSyncing(true)
@@ -260,11 +288,11 @@ export default function AdminDashboard(): React.ReactElement {
 
       const successMsg = data.message + ' (Cleanup Complete)'
       setSyncResult(successMsg)
-      alert('Sync Complete: ' + successMsg)
+      toast.success('Sync Complete: ' + successMsg)
     } catch (err: any) {
       console.error('Sync failed:', err)
       setSyncResult('Error: ' + err.message)
-      alert('Sync Failed: ' + err.message)
+      toast.error('Sync Failed: ' + err.message)
     } finally {
       setSyncing(false)
     }
@@ -304,38 +332,38 @@ export default function AdminDashboard(): React.ReactElement {
     if (!editingPilot) return
     try {
       await DataService.adminUpdatePilot(editingPilot.id, editForm)
-      alert('Pilot updated successfully')
+      toast.success('Pilot updated successfully')
       setEditingPilot(null)
       fetchPilots()
     } catch (error: any) {
       console.error('Update failed:', error)
-      alert('Update failed: ' + error.message)
+      toast.error('Update failed: ' + error.message)
     }
   }
 
   const handleBanUser = async (pilot: PilotProfile) => {
-    if (
-      !confirm(`Are you sure you want to BAN ${pilot.callsign}? They will not be able to log in.`)
+    const confirmed = await toastConfirm(
+      `Are you sure you want to BAN ${pilot.callsign}? They will not be able to log in.`
     )
-      return
+    if (!confirmed) return
     try {
       await DataService.adminUpdatePilot(pilot.id, { status: 'banned' })
-      alert(`${pilot.callsign} has been BANNED.`)
+      toast.success(`${pilot.callsign} has been BANNED.`)
       fetchPilots()
     } catch (error: any) {
       console.error('Ban failed:', error)
-      alert('Ban failed: ' + error.message)
+      toast.error('Ban failed: ' + error.message)
     }
   }
 
   const handleActivateUser = async (pilot: PilotProfile) => {
     try {
       await DataService.adminUpdatePilot(pilot.id, { status: 'active' })
-      alert(`${pilot.callsign} is now ACTIVE.`)
+      toast.success(`${pilot.callsign} is now ACTIVE.`)
       fetchPilots()
     } catch (error: any) {
       console.error('Activation failed:', error)
-      alert('Activation failed: ' + error.message)
+      toast.error('Activation failed: ' + error.message)
     }
   }
 
@@ -346,76 +374,86 @@ export default function AdminDashboard(): React.ReactElement {
     try {
       await DataService.createAnnouncement(newAnnouncement)
       setNewAnnouncement('')
-      fetchAnnouncements()
+      await fetchAnnouncements()
     } catch (error: any) {
       console.error('Failed to create announcement:', error)
-      alert('Error: ' + error.message)
+      toast.error('Error: ' + error.message)
     }
   }
 
   const handleDeleteAnnouncement = async (id: string) => {
-    if (!confirm('Delete this announcement?')) return
+    const confirmed = await toastConfirm('Delete this announcement?')
+    if (!confirmed) return
     try {
       await DataService.deleteAnnouncement(id)
-      fetchAnnouncements()
+      await fetchAnnouncements()
     } catch (error: any) {
       console.error('Failed to delete announcement:', error)
-      alert('Error: ' + error.message)
+      toast.error('Error: ' + error.message)
     }
   }
 
   return (
-    <div className="flex h-full bg-[#f0f0f0] text-[#333] font-tahoma overflow-hidden">
+    <div className="flex h-full bg-slate-50 text-slate-800 font-sans overflow-hidden">
       <Sidebar activePage="admin" onLogout={handleLogout} />
 
       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
         {/* Header */}
-        <motion.div variants={slideDown} initial="hidden" animate="visible" className="p-4 pb-2 border-b-2 border-white shadow-sm mb-2 flex items-center justify-between bg-white">
+        <motion.div
+          variants={slideDown}
+          initial="hidden"
+          animate="visible"
+          className="p-6 pb-4 flex flex-col gap-4 border-b-2 border-sky-500/20"
+        >
           <div>
-            <h1 className="text-xl font-bold uppercase tracking-tighter text-[#333] flex items-center gap-2">
-              <ShieldCheck className="w-6 h-6 text-blue-800" />
-              Administrator Control Panel
+            <h1 className="text-3xl font-black text-slate-800 tracking-tight flex items-center gap-3">
+              <ShieldCheck className="w-8 h-8 text-sky-500" />
+              Admin Control Panel
             </h1>
-            <p className="text-xs text-gray-600">Authorized Personnel Only • IP Logged</p>
+            <p className="text-xs text-slate-500 mt-1 ml-11 font-medium">Authorized Personnel Only</p>
           </div>
           <div className="flex gap-2">
             <button
               onClick={() => setActiveTab('support')}
-              className={`px-4 py-2 text-xs font-bold uppercase rounded transition-colors flex items-center gap-2 ${activeTab === 'support'
-                ? 'bg-blue-600 text-white shadow-md'
-                : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                }`}
+              className={`px-5 py-2.5 text-xs font-bold uppercase rounded-xl transition-all flex items-center gap-2 ${
+                activeTab === 'support'
+                  ? 'bg-sky-500 text-white shadow-md'
+                  : 'bg-white text-slate-600 hover:bg-sky-50 border border-slate-200 shadow-sm'
+              }`}
             >
               <MessageSquare className="w-4 h-4" /> Support
             </button>
             <button
               onClick={() => setActiveTab('users')}
-              className={`px-4 py-2 text-xs font-bold uppercase rounded transition-colors flex items-center gap-2 ${activeTab === 'users'
-                ? 'bg-blue-600 text-white shadow-md'
-                : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                }`}
+              className={`px-5 py-2.5 text-xs font-bold uppercase rounded-xl transition-all flex items-center gap-2 ${
+                activeTab === 'users'
+                  ? 'bg-sky-500 text-white shadow-md'
+                  : 'bg-white text-slate-600 hover:bg-sky-50 border border-slate-200 shadow-sm'
+              }`}
             >
               <Users className="w-4 h-4" /> User Mgmt
             </button>
             <button
               onClick={() => setActiveTab('announcements')}
-              className={`px-4 py-2 text-xs font-bold uppercase rounded transition-colors flex items-center gap-2 ${activeTab === 'announcements'
-                ? 'bg-blue-600 text-white shadow-md'
-                : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                }`}
+              className={`px-5 py-2.5 text-xs font-bold uppercase rounded-xl transition-all flex items-center gap-2 ${
+                activeTab === 'announcements'
+                  ? 'bg-sky-500 text-white shadow-md'
+                  : 'bg-white text-slate-600 hover:bg-sky-50 border border-slate-200 shadow-sm'
+              }`}
             >
               <Megaphone className="w-4 h-4" /> Announcements
             </button>
             <button
               onClick={() => setActiveTab('deletions')}
-              className={`px-4 py-2 text-xs font-bold uppercase rounded transition-colors flex items-center gap-2 ${activeTab === 'deletions'
-                ? 'bg-red-600 text-white shadow-md'
-                : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                }`}
+              className={`px-5 py-2.5 text-xs font-bold uppercase rounded-xl transition-all flex items-center gap-2 ${
+                activeTab === 'deletions'
+                  ? 'bg-red-500 text-white shadow-md'
+                  : 'bg-white text-slate-600 hover:bg-sky-50 border border-slate-200 shadow-sm'
+              }`}
             >
               <Trash2 className="w-4 h-4" /> Deletions
               {deletionRequests.length > 0 && (
-                <span className="bg-red-100 text-red-800 text-[9px] px-1.5 rounded-full font-bold">
+                <span className="bg-red-100 text-red-700 text-[9px] px-2 py-0.5 rounded-full font-bold">
                   {deletionRequests.length}
                 </span>
               )}
@@ -433,86 +471,99 @@ export default function AdminDashboard(): React.ReactElement {
           key={activeTab} // Retrigger animation on tab change
         >
           {activeTab === 'support' && (
-            <div className="absolute inset-0 p-4 pt-0 overflow-hidden flex gap-4">
+            <div className="absolute inset-0 p-6 pt-4 overflow-hidden flex gap-4">
               {/* Ticket List */}
-              <div className="w-1/3 flex flex-col gap-2 h-full overflow-hidden">
-                <div className="bg-[#ddd] text-[#333] px-2 py-1 text-xs font-bold border-b border-white flex justify-between items-center shadow-sm shrink-0">
-                  <span className="flex items-center gap-1">
-                    <MessageSquare className="w-3 h-3" />
-                    INBOX ({tickets.filter((t) => t.status !== 'resolved').length})
-                  </span>
-                  <button
-                    onClick={fetchTickets}
-                    className="text-[10px] text-blue-800 hover:underline"
-                  >
-                    [REFRESH]
-                  </button>
-                </div>
+              <div className="w-1/3 flex flex-col h-full overflow-hidden">
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col h-full overflow-hidden">
+                  <div className="px-4 py-3 border-b border-slate-100 flex justify-between items-center shrink-0">
+                    <span className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                      <MessageSquare className="w-4 h-4 text-sky-500" />
+                      Inbox
+                      <span className="bg-sky-100 text-sky-500 text-[10px] px-2 py-0.5 rounded-full font-bold ml-1">
+                        {tickets.filter((t) => t.status !== 'resolved').length}
+                      </span>
+                    </span>
+                    <button
+                      onClick={fetchTickets}
+                      className="text-xs text-sky-500 hover:text-sky-600 font-bold hover:bg-sky-50 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
+                    >
+                      <RefreshCw className="w-3 h-3" /> Refresh
+                    </button>
+                  </div>
 
-                {loading ? (
-                  <div className="legacy-panel p-4 flex justify-center">
-                    <span className="animate-pulse text-xs text-gray-500">Loading tickets...</span>
-                  </div>
-                ) : tickets.length === 0 ? (
-                  <div className="legacy-panel p-8 text-center border-dashed">
-                    <p className="text-gray-500 text-xs italic">No tickets found.</p>
-                  </div>
-                ) : (
-                  <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="flex flex-col gap-1 overflow-y-auto pr-1 flex-1">
-                    {tickets.map((ticket) => (
-                      <motion.button
-                        variants={fadeInUp}
-                        key={ticket.id}
-                        onClick={() => handleTicketClick(ticket)}
-                        className={`legacy-panel text-left p-2 transition-all flex flex-col gap-1 group ${selectedTicket?.id === ticket.id
-                          ? 'bg-blue-50 border-blue-300 ring-1 ring-blue-200'
-                          : 'hover:bg-gray-50'
+                  {loading ? (
+                    <div className="p-8 flex justify-center">
+                      <span className="animate-pulse text-sm text-slate-400 font-medium">Loading tickets...</span>
+                    </div>
+                  ) : tickets.length === 0 ? (
+                    <div className="p-12 text-center">
+                      <MessageSquare className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                      <p className="text-slate-400 text-sm font-medium">No tickets found.</p>
+                    </div>
+                  ) : (
+                    <motion.div
+                      variants={staggerContainer}
+                      initial="hidden"
+                      animate="visible"
+                      className="flex flex-col overflow-y-auto flex-1"
+                    >
+                      {tickets.map((ticket) => (
+                        <motion.button
+                          variants={fadeInUp}
+                          key={ticket.id}
+                          onClick={() => handleTicketClick(ticket)}
+                          className={`text-left px-4 py-3 transition-all flex flex-col gap-1.5 border-b border-slate-100 last:border-0 group ${
+                            selectedTicket?.id === ticket.id
+                              ? 'bg-sky-50/80 border-l-2 border-l-sky-500'
+                              : 'hover:bg-slate-50'
                           }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span
-                            className={`text-[10px] font-bold px-1 rounded border uppercase ${ticket.status === 'resolved'
-                              ? 'bg-green-50 text-green-700 border-green-200'
-                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                        >
+                          <div className="flex items-center justify-between">
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                                ticket.status === 'resolved'
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : 'bg-amber-100 text-amber-700'
                               }`}
-                          >
-                            {ticket.status === 'resolved' ? 'Resolved' : 'Pending'}
-                          </span>
-                          <span className="text-[9px] text-gray-500 font-mono">
-                            {new Date(ticket.created_at).toLocaleDateString()}
-                          </span>
-                        </div>
+                            >
+                              {ticket.status === 'resolved' ? 'Resolved' : 'Pending'}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-medium">
+                              {new Date(ticket.created_at).toLocaleDateString()}
+                            </span>
+                          </div>
 
-                        <div className="font-bold text-xs text-[#333] truncate w-full">
-                          {ticket.subject}
-                        </div>
+                          <div className="font-bold text-sm text-slate-800 truncate w-full">
+                            {ticket.subject}
+                          </div>
 
-                        <div className="flex items-center gap-1 text-[10px] text-gray-600">
-                          <User className="w-3 h-3 text-gray-400 group-hover:text-blue-600" />
-                          <span className="font-mono">
-                            {ticket.profiles?.callsign || 'Unknown'}
-                          </span>
-                        </div>
-                      </motion.button>
-                    ))}
-                  </motion.div>
-                )}
+                          <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                            <User className="w-3 h-3 text-slate-400 group-hover:text-sky-500 transition-colors" />
+                            <span className="font-medium">
+                              {ticket.profiles?.callsign || 'Unknown'}
+                            </span>
+                          </div>
+                        </motion.button>
+                      ))}
+                    </motion.div>
+                  )}
+                </div>
               </div>
 
               {/* Ticket Chat View */}
-              <div className="flex-1 legacy-panel flex flex-col overflow-hidden bg-white h-full">
+              <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden h-full">
                 {selectedTicket ? (
                   <>
                     {/* Ticket Header */}
-                    <div className="bg-gray-50 border-b border-gray-200 p-3 flex justify-between items-start shrink-0">
+                    <div className="bg-slate-50/80 border-b border-slate-100 px-5 py-4 flex justify-between items-start shrink-0">
                       <div>
-                        <div className="flex items-center gap-2 text-xs text-gray-600 mb-1">
-                          <span className="font-bold bg-blue-100 text-blue-800 px-1 border border-blue-200 rounded-sm">
+                        <div className="flex items-center gap-2 text-xs text-slate-500 mb-1.5">
+                          <span className="font-bold bg-blue-100 text-[#0a1f5c] px-2 py-0.5 rounded-full text-[10px]">
                             {selectedTicket.profiles?.callsign}
                           </span>
-                          <span>reported:</span>
+                          <span className="font-medium">reported:</span>
                         </div>
-                        <h2 className="text-lg font-bold text-blue-900">
+                        <h2 className="text-xl font-black text-slate-800 tracking-tight">
                           {selectedTicket.subject}
                         </h2>
                       </div>
@@ -520,21 +571,21 @@ export default function AdminDashboard(): React.ReactElement {
                         {selectedTicket.status !== 'resolved' && (
                           <button
                             onClick={handleResolveTicket}
-                            className="btn-classic px-2 py-1 text-xs flex items-center gap-1 text-green-700"
+                            className="px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-all hover:-translate-y-0.5"
                           >
-                            <CheckCircle className="w-3 h-3" /> Mark Resolved
+                            <CheckCircle className="w-3.5 h-3.5" /> Resolve
                           </button>
                         )}
                         <button
                           onClick={handleDeleteTicket}
-                          className="btn-classic px-2 py-1 text-xs flex items-center gap-1 text-red-600 hover:bg-red-50 border-red-200"
+                          className="px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl transition-all hover:-translate-y-0.5"
                           title="Delete Ticket"
                         >
-                          <Trash2 className="w-3 h-3" /> Delete
+                          <Trash2 className="w-3.5 h-3.5" /> Delete
                         </button>
                         <button
                           onClick={() => setSelectedTicket(null)}
-                          className="text-gray-400 hover:text-red-500 ml-2"
+                          className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors ml-1"
                         >
                           <X className="w-4 h-4" />
                         </button>
@@ -542,13 +593,13 @@ export default function AdminDashboard(): React.ReactElement {
                     </div>
 
                     {/* Chat Area */}
-                    <div className="flex-1 p-3 bg-[#e5e5e5] overflow-y-auto space-y-3">
+                    <div className="flex-1 px-5 py-4 bg-slate-50/50 overflow-y-auto space-y-4">
                       {loadingMessages ? (
-                        <div className="text-center text-xs text-gray-500 italic mt-4">
+                        <div className="text-center text-sm text-slate-400 font-medium mt-8">
                           Loading conversation...
                         </div>
                       ) : ticketMessages.length === 0 ? (
-                        <div className="text-center text-xs text-gray-500 italic mt-4">
+                        <div className="text-center text-sm text-slate-400 font-medium mt-8">
                           No messages found.
                         </div>
                       ) : (
@@ -560,25 +611,36 @@ export default function AdminDashboard(): React.ReactElement {
                               className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}
                             >
                               <div
-                                className={`max-w-[85%] border px-3 py-2 shadow-sm ${isAdmin
-                                  ? 'bg-blue-100 border-blue-300 rounded-tl-lg rounded-bl-lg rounded-br-lg'
-                                  : 'bg-white border-gray-300 rounded-tr-lg rounded-br-lg rounded-bl-lg'
-                                  }`}
+                                className={`max-w-[80%] px-4 py-3 shadow-sm ${
+                                  isAdmin
+                                    ? 'bg-sky-500 text-white rounded-2xl rounded-br-md'
+                                    : 'bg-white border border-slate-200 text-slate-800 rounded-2xl rounded-bl-md'
+                                }`}
                               >
-                                <div className="text-[10px] font-bold opacity-70 mb-1 flex items-center gap-1 justify-between border-b border-black/10 pb-1">
+                                <div
+                                  className={`text-[10px] font-bold mb-1.5 flex items-center gap-1.5 justify-between pb-1.5 ${
+                                    isAdmin
+                                      ? 'border-b border-white/20 text-white/80'
+                                      : 'border-b border-slate-100 text-slate-400'
+                                  }`}
+                                >
                                   <span className="flex items-center gap-1">
                                     {isAdmin ? (
-                                      <ShieldCheck className="w-3 h-3 text-blue-700" />
+                                      <ShieldCheck className="w-3 h-3" />
                                     ) : (
-                                      <User className="w-3 h-3 text-gray-500" />
+                                      <User className="w-3 h-3" />
                                     )}
                                     {msg.profiles?.callsign || 'Unknown'}
                                   </span>
-                                  <span className="font-mono text-[9px] opacity-60 ml-2">
+                                  <span className="text-[9px] opacity-70 ml-2">
                                     {new Date(msg.created_at).toLocaleString()}
                                   </span>
                                 </div>
-                                <p className="text-xs text-[#333] font-sans whitespace-pre-wrap leading-relaxed">
+                                <p
+                                  className={`text-sm whitespace-pre-wrap leading-relaxed ${
+                                    isAdmin ? '' : 'text-slate-700'
+                                  }`}
+                                >
                                   {msg.message}
                                 </p>
                               </div>
@@ -589,28 +651,27 @@ export default function AdminDashboard(): React.ReactElement {
                     </div>
 
                     {/* Reply Input */}
-                    <div className="p-3 bg-white border-t border-gray-200 shrink-0">
+                    <div className="px-5 py-4 bg-white border-t border-slate-100 shrink-0">
                       {selectedTicket.status === 'resolved' ? (
-                        <div className="bg-gray-100 border border-gray-300 p-2 text-center text-xs text-gray-500 italic flex items-center justify-center gap-2">
-                          <Lock className="w-3 h-3" /> This ticket is resolved. Re-open
-                          functionality not yet implemented.
+                        <div className="bg-slate-50 border border-slate-200 p-3 text-center text-sm text-slate-500 font-medium rounded-xl flex items-center justify-center gap-2">
+                          <Lock className="w-4 h-4 text-slate-400" /> This ticket is resolved.
                         </div>
                       ) : (
-                        <div className="flex flex-col gap-2">
-                          <div className="bg-blue-50 px-2 py-1 text-[10px] text-blue-800 border border-blue-100 font-bold">
-                            REPLYING AS ADMINISTRATOR
+                        <div className="flex flex-col gap-3">
+                          <div className="bg-sky-50 px-3 py-1.5 text-[10px] text-sky-500 border border-sky-200 font-bold rounded-lg uppercase tracking-wider flex items-center gap-1.5">
+                            <ShieldCheck className="w-3 h-3" /> Replying as Administrator
                           </div>
-                          <div className="flex gap-2 items-end">
+                          <div className="flex gap-3 items-end">
                             <textarea
                               value={responseText}
                               onChange={(e) => setResponseText(e.target.value)}
                               placeholder="Type your response here..."
-                              className="flex-1 h-20 border border-gray-300 p-2 text-sm focus:outline-none focus:border-blue-500 resize-none font-sans"
+                              className="flex-1 h-20 border border-slate-200 p-3 text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 resize-none rounded-xl bg-slate-50 focus:bg-white transition-all shadow-sm"
                             />
                             <button
                               onClick={handleSendResponse}
                               disabled={sending || !responseText.trim()}
-                              className="btn-navy h-20 px-4 flex flex-col items-center justify-center gap-1"
+                              className="h-20 px-5 bg-sky-500 hover:bg-sky-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl flex flex-col items-center justify-center gap-1 text-sm font-bold shadow-md hover:shadow-lg transition-all hover:-translate-y-0.5 disabled:hover:translate-y-0"
                             >
                               {sending ? (
                                 <RefreshCw className="w-4 h-4 animate-spin" />
@@ -625,11 +686,11 @@ export default function AdminDashboard(): React.ReactElement {
                     </div>
                   </>
                 ) : (
-                  <div className="h-full flex flex-col items-center justify-center text-gray-400">
-                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-2">
-                      <MessageSquare className="w-8 h-8 opacity-20" />
+                  <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                    <div className="w-20 h-20 bg-slate-100 rounded-2xl flex items-center justify-center mb-4">
+                      <MessageSquare className="w-10 h-10 text-slate-300" />
                     </div>
-                    <p className="text-xs">Select a ticket from the list to view details</p>
+                    <p className="text-sm font-medium">Select a ticket to view the conversation</p>
                   </div>
                 )}
               </div>
@@ -637,102 +698,119 @@ export default function AdminDashboard(): React.ReactElement {
           )}
 
           {activeTab === 'users' && (
-            <div className="absolute inset-0 p-4 pt-0 overflow-y-auto">
-              <div className="mb-4 flex gap-4">
+            <div className="absolute inset-0 p-6 pt-4 overflow-y-auto">
+              <div className="mb-5 flex gap-3 items-center">
                 <input
                   type="text"
-                  placeholder="Search Pilots (Use ID, Callsign, or Username)..."
-                  className="w-1/3 p-2 border border-gray-300 rounded text-sm font-sans"
+                  placeholder="Search by Callsign, Username, or ID..."
+                  className="flex-1 max-w-md p-3 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 placeholder:text-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all shadow-sm"
                   value={userSearch}
                   onChange={(e) => setUserSearch(e.target.value)}
                 />
                 <button
                   onClick={fetchPilots}
-                  className="btn-classic px-4 py-2 text-xs flex items-center gap-1"
+                  className="px-4 py-3 text-xs font-bold flex items-center gap-1.5 text-sky-500 bg-white hover:bg-sky-50 border border-slate-200 rounded-xl transition-all shadow-sm hover:-translate-y-0.5"
                 >
-                  <RefreshCw className="w-3 h-3" /> Refresh List
+                  <RefreshCw className="w-3.5 h-3.5" /> Refresh
                 </button>
+                <span className="text-xs text-slate-400 font-medium ml-auto">
+                  {filteredPilots.length} pilot{filteredPilots.length !== 1 ? 's' : ''}
+                </span>
               </div>
 
-              <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pb-8">
+              <motion.div
+                variants={staggerContainer}
+                initial="hidden"
+                animate="visible"
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-8"
+              >
                 {filteredPilots.map((pilot) => (
                   <motion.div
                     variants={fadeInUp}
                     key={pilot.id}
-                    className={`bg-white border rounded shadow-sm p-3 relative ${pilot.status === 'banned' ? 'border-red-300 bg-red-50' : 'border-gray-200'
-                      }`}
+                    className={`bg-white rounded-2xl shadow-sm overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-md ${
+                      pilot.status === 'banned'
+                        ? 'border-2 border-red-300 ring-1 ring-red-100'
+                        : 'border border-slate-200'
+                    }`}
                   >
-                    <div className="flex justify-between items-start mb-2">
+                    {/* Card Header */}
+                    <div className={`px-4 py-3 flex justify-between items-start ${
+                      pilot.status === 'banned' ? 'bg-red-50' : 'bg-slate-50/80'
+                    }`}>
                       <div>
                         <div className="flex items-center gap-2">
-                          <h3 className="font-bold text-blue-900">{pilot.callsign}</h3>
+                          <h3 className="font-black text-[#0a1f5c] text-lg tracking-tight">{pilot.callsign}</h3>
                           {pilot.isAdmin && (
-                            <span className="text-[9px] bg-purple-100 text-purple-700 px-1 rounded border border-purple-200">
+                            <span className="text-[9px] bg-sky-500/10 text-sky-500 px-1.5 py-0.5 rounded-full font-bold border border-sky-500/20">
                               ADMIN
                             </span>
                           )}
                           {pilot.status === 'banned' && (
-                            <span className="text-[9px] bg-red-600 text-white px-1 rounded font-bold">
+                            <span className="text-[9px] bg-red-600 text-white px-1.5 py-0.5 rounded-full font-bold">
                               BANNED
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-gray-500 font-mono text-[9px]">{pilot.id}</p>
+                        <p className="text-[9px] text-slate-400 font-mono mt-0.5 truncate max-w-[200px]">{pilot.id}</p>
                       </div>
                       <div className="text-right">
-                        <div className="text-xs font-bold">{pilot.rank}</div>
-                        <div className="text-[10px] text-gray-500">{pilot.homeBase}</div>
+                        <div className="text-xs font-bold text-slate-700">{pilot.rank}</div>
+                        <div className="text-[10px] text-slate-400 font-medium">{pilot.homeBase}</div>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 text-xs bg-gray-50 p-2 rounded mb-3 border border-gray-100">
-                      <div>
-                        <span className="text-gray-400 block text-[9px] uppercase">Balance</span>
-                        <span className="font-mono font-bold text-green-700">
+                    {/* Stats Grid */}
+                    <div className="grid grid-cols-2 gap-3 text-xs p-4">
+                      <div className="bg-emerald-50/60 rounded-xl p-2.5 border border-emerald-100">
+                        <span className="text-slate-400 block text-[9px] uppercase font-bold tracking-wider mb-0.5">Balance</span>
+                        <span className="font-mono font-bold text-emerald-700">
                           €{pilot.balance.toLocaleString()}
                         </span>
                       </div>
-                      <div>
-                        <span className="text-gray-400 block text-[9px] uppercase">Hours</span>
-                        <span className="font-mono font-bold">{pilot.flightHours.toFixed(1)}h</span>
+                      <div className="bg-blue-50/60 rounded-xl p-2.5 border border-blue-100">
+                        <span className="text-slate-400 block text-[9px] uppercase font-bold tracking-wider mb-0.5">Hours</span>
+                        <span className="font-mono font-bold text-[#0a1f5c]">{pilot.flightHours.toFixed(1)}h</span>
                       </div>
-                      <div>
-                        <span className="text-gray-400 block text-[9px] uppercase">Location</span>
-                        <span className="font-mono">{pilot.currentLocation}</span>
+                      <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-100">
+                        <span className="text-slate-400 block text-[9px] uppercase font-bold tracking-wider mb-0.5">Location</span>
+                        <span className="font-mono font-bold text-slate-700">{pilot.currentLocation}</span>
                       </div>
-                      <div>
-                        <span className="text-gray-400 block text-[9px] uppercase">SB User</span>
-                        <span className="font-mono text-[10px] truncate w-full block">
-                          {pilot.simBriefUsername || '-'}
+                      <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-100">
+                        <span className="text-slate-400 block text-[9px] uppercase font-bold tracking-wider mb-0.5">SimBrief</span>
+                        <span className="font-mono text-[10px] truncate w-full block text-slate-600">
+                          {pilot.simBriefUsername || '—'}
                         </span>
                       </div>
                     </div>
 
-                    <div className="flex justify-between gap-2 border-t pt-2">
+                    {/* Actions */}
+                    <div className="flex gap-2 px-4 pb-4">
                       <button
                         onClick={() => handleEditClick(pilot)}
-                        className="flex-1 btn-classic py-1 text-[10px] flex items-center justify-center gap-1"
+                        className="flex-1 py-2 text-xs font-bold flex items-center justify-center gap-1.5 text-[#0a1f5c] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl transition-all hover:-translate-y-0.5"
                       >
-                        <Edit className="w-3 h-3" /> Edit Stats
+                        <Edit className="w-3.5 h-3.5" /> Edit Stats
                       </button>
 
                       {pilot.status === 'banned' ? (
                         <button
                           onClick={() => handleActivateUser(pilot)}
-                          className="flex-1 bg-green-600 hover:bg-green-700 text-white py-1 rounded text-[10px] font-bold flex items-center justify-center gap-1 transition-colors"
+                          className="flex-1 py-2 text-xs font-bold flex items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl transition-all hover:-translate-y-0.5 shadow-sm"
                         >
-                          <CheckCircle2 className="w-3 h-3" /> Activate
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Activate
                         </button>
                       ) : (
                         <button
                           onClick={() => handleBanUser(pilot)}
                           disabled={pilot.isAdmin}
-                          className={`flex-1 py-1 rounded text-[10px] font-bold flex items-center justify-center gap-1 transition-colors ${pilot.isAdmin
-                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                            : 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-300'
-                            }`}
+                          className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                            pilot.isAdmin
+                              ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                              : 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 hover:-translate-y-0.5'
+                          }`}
                         >
-                          <Ban className="w-3 h-3" /> Ban User
+                          <Ban className="w-3.5 h-3.5" /> Ban User
                         </button>
                       )}
                     </div>
@@ -743,25 +821,25 @@ export default function AdminDashboard(): React.ReactElement {
           )}
 
           {activeTab === 'announcements' && (
-            <div className="absolute inset-0 p-4 pt-0 overflow-y-auto">
-              <div className="flex gap-4">
+            <div className="absolute inset-0 p-6 pt-4 overflow-y-auto">
+              <div className="flex gap-5">
                 {/* Create Form */}
-                <div className="w-1/3 legacy-panel p-4 h-fit bg-blue-50 border-blue-200">
-                  <h3 className="font-bold text-blue-900 border-b border-blue-200 mb-3 pb-2 flex items-center gap-2">
-                    <Megaphone className="w-4 h-4" /> New Announcement
+                <div className="w-1/3 bg-white rounded-2xl border border-slate-200 shadow-sm p-5 h-fit">
+                  <h3 className="font-black text-[#0a1f5c] text-sm uppercase tracking-widest border-b border-slate-100 mb-4 pb-3 flex items-center gap-2">
+                    <Megaphone className="w-4 h-4 text-sky-500" /> New Announcement
                   </h3>
                   <textarea
-                    className="w-full h-32 border border-blue-200 p-2 text-sm rounded mb-2 font-sans focus:outline-none focus:ring-1 focus:ring-blue-400"
+                    className="w-full h-32 border border-slate-200 p-3 text-sm rounded-xl font-sans bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all shadow-sm mb-3 resize-none placeholder:text-slate-400"
                     placeholder="Type your system-wide announcement here..."
                     value={newAnnouncement}
                     onChange={(e) => setNewAnnouncement(e.target.value)}
                   />
-                  <div className="text-[10px] text-gray-500 mb-3">
-                    This message will be visible to ALL pilots immediately.
+                  <div className="text-[10px] text-slate-400 font-medium mb-4 flex items-center gap-1.5">
+                    <span className="text-amber-500">⚠️</span> This message will be visible to ALL pilots immediately.
                   </div>
                   <button
                     onClick={handleCreateAnnouncement}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded text-sm shadow-sm transition-all"
+                    className="w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-3 rounded-xl text-sm shadow-md hover:shadow-lg transition-all hover:-translate-y-0.5"
                   >
                     Broadcast Now
                   </button>
@@ -769,132 +847,213 @@ export default function AdminDashboard(): React.ReactElement {
 
                 {/* List */}
                 <div className="flex-1">
-                  <h3 className="font-bold text-gray-700 mb-3 ml-1">Active Announcements</h3>
-                  <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-2">
+                  <h3 className="font-black text-slate-800 text-sm uppercase tracking-widest mb-4 flex items-center gap-2">
+                    Active Announcements
+                  </h3>
+                  <div className="space-y-3">
                     {announcements.length === 0 ? (
-                      <div className="text-gray-400 text-sm italic p-4 text-center border-dashed border-2 rounded">
-                        No active announcements.
+                      <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-12 text-center">
+                        <Megaphone className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                        <p className="text-slate-400 text-sm font-medium">No active announcements.</p>
                       </div>
                     ) : (
-                      announcements.map((a) => (
-                        <motion.div
-                          variants={fadeInUp}
-                          key={a.id}
-                          className="bg-white border border-l-4 border-l-blue-500 shadow-sm p-4 rounded flex justify-between items-start"
-                        >
-                          <div>
-                            <p className="text-gray-800 font-medium whitespace-pre-wrap">
-                              {a.message}
-                            </p>
-                            <div className="text-[10px] text-gray-400 mt-2 flex gap-3">
-                              <span>
-                                Posted by:{' '}
-                                <span className="font-bold text-gray-600">
-                                  {a.author?.callsign}
-                                </span>
-                              </span>
-                              <span>{new Date(a.created_at).toLocaleString()}</span>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => handleDeleteAnnouncement(a.id)}
-                            className="text-gray-400 hover:text-red-600 p-1"
-                            title="Remove Announcement"
+                      announcements.map((a) => {
+                        const isEditing = editingAnnouncementId === a.id
+
+                        const handleSaveEdit = async () => {
+                          if (!editAnnouncementText.trim() || editAnnouncementText === a.message) {
+                            setEditingAnnouncementId(null)
+                            return
+                          }
+                          try {
+                            await DataService.updateAnnouncement(a.id, editAnnouncementText)
+                            setEditingAnnouncementId(null)
+                            await fetchAnnouncements()
+                          } catch (error: any) {
+                            console.error('Failed to update announcement:', error)
+                            toast.error('Error updating announcement: ' + error.message)
+                          }
+                        }
+
+                        return (
+                          <motion.div
+                            variants={fadeInUp}
+                            initial="hidden"
+                            animate="visible"
+                            key={a.id}
+                            className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden"
                           >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </motion.div>
-                      ))
+                            <div className="border-l-4 border-l-sky-500 p-4 flex flex-col gap-2">
+                              {isEditing ? (
+                                <div className="flex flex-col gap-3 w-full">
+                                  <textarea
+                                    className="w-full min-h-[80px] border border-slate-200 p-3 text-sm rounded-xl font-sans bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all shadow-sm resize-none"
+                                    value={editAnnouncementText}
+                                    onChange={(e) => setEditAnnouncementText(e.target.value)}
+                                    autoFocus
+                                  />
+                                  <div className="flex gap-2 justify-end">
+                                    <button
+                                      onClick={() => setEditingAnnouncementId(null)}
+                                      className="px-4 py-1.5 text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg font-bold transition-colors"
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button
+                                      onClick={handleSaveEdit}
+                                      className="px-4 py-1.5 text-xs bg-sky-500 hover:bg-sky-600 text-white rounded-lg font-bold transition-colors flex items-center gap-1 shadow-sm"
+                                    >
+                                      <CheckCircle className="w-3 h-3" /> Save
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex justify-between items-start w-full">
+                                  <div className="flex-1">
+                                    <p className="text-slate-800 font-medium whitespace-pre-wrap text-sm leading-relaxed">
+                                      {a.message}
+                                    </p>
+                                    <div className="text-[10px] text-slate-400 mt-3 flex gap-3 font-medium">
+                                      <span>
+                                        By{' '}
+                                        <span className="font-bold text-[#0a1f5c]">
+                                          {a.author?.callsign}
+                                        </span>
+                                      </span>
+                                      <span>{new Date(a.created_at).toLocaleString()}</span>
+                                      {a.updated_at && a.updated_at !== a.created_at && (
+                                        <span className="italic text-slate-300">(Edited)</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-1 ml-4 shrink-0">
+                                    <button
+                                      onClick={() => {
+                                        setEditingAnnouncementId(a.id)
+                                        setEditAnnouncementText(a.message)
+                                      }}
+                                      className="text-slate-400 hover:text-sky-500 p-1.5 hover:bg-sky-50 rounded-lg transition-colors group"
+                                      title="Edit Announcement"
+                                    >
+                                      <Edit className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteAnnouncement(a.id)}
+                                      className="text-slate-400 hover:text-red-600 p-1.5 hover:bg-red-50 rounded-lg transition-colors group"
+                                      title="Remove Announcement"
+                                    >
+                                      <Trash2 className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </motion.div>
+                        )
+                      })
                     )}
-                  </motion.div>
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
           {activeTab === 'deletions' && (
-            <div className="absolute inset-0 p-4 pt-0 overflow-y-auto">
-              <div className="mb-4 flex justify-between items-center">
-                <h3 className="font-bold text-gray-700 flex items-center gap-2">
-                  <Trash2 className="w-4 h-4 text-red-600" /> Flight Deletion Requests
+            <div className="absolute inset-0 p-6 pt-4 overflow-y-auto">
+              <div className="mb-5 flex justify-between items-center">
+                <h3 className="font-black text-slate-800 text-sm uppercase tracking-widest flex items-center gap-2">
+                  <Trash2 className="w-4 h-4 text-red-500" /> Flight Deletion Requests
                 </h3>
                 <button
                   onClick={fetchDeletionRequests}
-                  className="btn-classic px-4 py-2 text-xs flex items-center gap-1"
+                  className="px-4 py-2.5 text-xs font-bold flex items-center gap-1.5 text-sky-500 bg-white hover:bg-sky-50 border border-slate-200 rounded-xl transition-all shadow-sm hover:-translate-y-0.5"
                 >
-                  <RefreshCw className="w-3 h-3" /> Refresh
+                  <RefreshCw className="w-3.5 h-3.5" /> Refresh
                 </button>
               </div>
 
               {deletionRequests.length === 0 ? (
-                <div className="text-gray-400 text-sm italic p-8 text-center border-dashed border-2 rounded">
-                  No deletion requests found.
+                <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-12 text-center">
+                  <Trash2 className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                  <p className="text-slate-400 text-sm font-medium">No deletion requests found.</p>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {deletionRequests.map((req) => (
                     <div
                       key={req.id}
-                      className="bg-white border rounded shadow-sm p-4 border-l-4 border-l-amber-500"
+                      className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden"
                     >
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <div className="flex items-center gap-3 mb-2">
-                            <span className="font-bold text-blue-900 text-lg">{req.flightNumber}</span>
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded uppercase bg-amber-100 text-amber-800 border border-amber-200">
-                              PENDING
-                            </span>
+                      <div className="border-l-4 border-l-amber-400 p-5">
+                        <div className="flex justify-between items-start">
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-3">
+                              <span className="font-black text-[#0a1f5c] text-xl tracking-tight">
+                                {req.flightNumber}
+                              </span>
+                              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase bg-amber-100 text-amber-700 border border-amber-200">
+                                PENDING
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
+                              <div className="text-slate-500">
+                                <span className="font-bold text-slate-700">Pilot:</span> {req.pilotCallsign}
+                              </div>
+                              <div className="text-slate-500">
+                                <span className="font-bold text-slate-700">Route:</span> {req.departure} ➔{' '}
+                                {req.arrival} ({req.aircraft})
+                              </div>
+                              <div className="text-slate-500">
+                                <span className="font-bold text-slate-700">Revert:</span> €{req.earnings} | -
+                                {req.duration.toFixed(1)}m
+                              </div>
+                              <div className="text-slate-500">
+                                <span className="font-bold text-slate-700">Reason:</span> {req.deleteReason}
+                              </div>
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-medium">
+                              Requested: {new Date(req.date).toLocaleString()}
+                            </div>
                           </div>
-                          <div className="text-xs text-gray-600 mb-1">
-                            <span className="font-bold">Pilot:</span> {req.pilotCallsign}
-                          </div>
-                          <div className="text-xs text-gray-600 mb-1">
-                            <span className="font-bold">Route:</span> {req.departure} ➔ {req.arrival} ({req.aircraft})
-                          </div>
-                          <div className="text-xs text-gray-600 mb-1">
-                            <span className="font-bold">Income Revert:</span> €{req.earnings} | -{req.duration.toFixed(1)}m
-                          </div>
-                          <div className="text-xs text-gray-600 mb-1">
-                            <span className="font-bold">Reason:</span> {req.deleteReason}
-                          </div>
-                          <div className="text-[10px] text-gray-400">
-                            Requested: {new Date(req.date).toLocaleString()}
-                          </div>
-                        </div>
 
-                        <div className="flex gap-2">
-                          <button
-                            onClick={async () => {
-                              if (!confirm(`APPROVE deletion of flight ${req.flightNumber}?\n\nThis will safely deduct the flight earnings and hours from the pilot, and permanently delete the record.`))
-                                return
-                              try {
-                                await DataService.approveFlightDeletion(req.id)
-                                alert('Flight deleted successfully. Stats have been safely negated.')
-                                fetchDeletionRequests()
-                              } catch (err) {
-                                console.error(err)
-                                alert('Failed to approve deletion.')
-                              }
-                            }}
-                            className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded flex items-center gap-1"
-                          >
-                            <CheckCircle className="w-3 h-3" /> Approve & Delete
-                          </button>
-                          <button
-                            onClick={async () => {
-                              try {
-                                await DataService.rejectFlightDeletion(req.id)
-                                alert('Deletion Request rejected. Flight kept in history.')
-                                fetchDeletionRequests()
-                              } catch (err) {
-                                console.error(err)
-                                alert('Failed to reject request.')
-                              }
-                            }}
-                            className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 text-xs font-bold rounded border border-red-300 flex items-center gap-1"
-                          >
-                            <X className="w-3 h-3" /> Reject
-                          </button>
+                          <div className="flex gap-2 shrink-0 ml-4">
+                            <button
+                              onClick={async () => {
+                                const confirmed = await toastConfirm(
+                                  `APPROVE deletion of flight ${req.flightNumber}?\n\nThis will safely deduct the flight earnings and hours from the pilot, and permanently delete the record.`
+                                )
+                                if (!confirmed) return
+                                try {
+                                  await DataService.approveFlightDeletion(req.id)
+                                  toast.success(
+                                    'Flight deleted successfully. Stats have been safely negated.'
+                                  )
+                                  fetchDeletionRequests()
+                                } catch (err) {
+                                  console.error(err)
+                                  toast.error('Failed to approve deletion.')
+                                }
+                              }}
+                              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition-all hover:-translate-y-0.5"
+                            >
+                              <CheckCircle className="w-3.5 h-3.5" /> Approve
+                            </button>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await DataService.rejectFlightDeletion(req.id)
+                                  toast.success('Deletion Request rejected. Flight kept in history.')
+                                  fetchDeletionRequests()
+                                } catch (err) {
+                                  console.error(err)
+                                  toast.error('Failed to reject request.')
+                                }
+                              }}
+                              className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold rounded-xl border border-red-200 flex items-center gap-1.5 transition-all hover:-translate-y-0.5"
+                            >
+                              <X className="w-3.5 h-3.5" /> Reject
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -907,21 +1066,23 @@ export default function AdminDashboard(): React.ReactElement {
 
         {/* Edit Pilot Modal */}
         {editingPilot && (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center font-tahoma">
-            <div className="bg-white rounded shadow-2xl w-full max-w-md p-6 border-2 border-white">
-              <h2 className="text-xl font-bold text-blue-900 border-b pb-2 mb-4 flex items-center gap-2">
-                <Edit className="w-5 h-5" /> Edit Pilot: {editingPilot.callsign}
-              </h2>
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center font-sans">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200">
+              <div className="bg-slate-50/80 border-b border-slate-100 px-6 py-4">
+                <h2 className="text-xl font-black text-[#0a1f5c] tracking-tight flex items-center gap-2">
+                  <Edit className="w-5 h-5 text-sky-500" /> Edit Pilot: {editingPilot.callsign}
+                </h2>
+              </div>
 
-              <div className="space-y-3">
+              <div className="p-6 space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                     Flight Hours
                   </label>
                   <input
                     type="number"
                     step="0.1"
-                    className="w-full p-2 border rounded font-mono"
+                    className="w-full p-3 border border-slate-200 rounded-xl font-mono text-sm text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all shadow-sm"
                     value={editForm.flightHours}
                     onChange={(e) =>
                       setEditForm((prev) => ({ ...prev, flightHours: Number(e.target.value) }))
@@ -929,12 +1090,12 @@ export default function AdminDashboard(): React.ReactElement {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                     Balance (€)
                   </label>
                   <input
                     type="number"
-                    className="w-full p-2 border rounded font-mono"
+                    className="w-full p-3 border border-slate-200 rounded-xl font-mono text-sm text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all shadow-sm"
                     value={editForm.balance}
                     onChange={(e) =>
                       setEditForm((prev) => ({ ...prev, balance: Number(e.target.value) }))
@@ -943,12 +1104,12 @@ export default function AdminDashboard(): React.ReactElement {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                       Home Base
                     </label>
                     <input
                       type="text"
-                      className="w-full p-2 border rounded font-mono uppercase"
+                      className="w-full p-3 border border-slate-200 rounded-xl font-mono uppercase text-sm text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all shadow-sm"
                       value={editForm.homeBase}
                       onChange={(e) =>
                         setEditForm((prev) => ({ ...prev, homeBase: e.target.value }))
@@ -956,12 +1117,12 @@ export default function AdminDashboard(): React.ReactElement {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                       Location
                     </label>
                     <input
                       type="text"
-                      className="w-full p-2 border rounded font-mono uppercase"
+                      className="w-full p-3 border border-slate-200 rounded-xl font-mono uppercase text-sm text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all shadow-sm"
                       value={editForm.currentLocation}
                       onChange={(e) =>
                         setEditForm((prev) => ({ ...prev, currentLocation: e.target.value }))
@@ -970,11 +1131,11 @@ export default function AdminDashboard(): React.ReactElement {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                     Rank
                   </label>
                   <select
-                    className="w-full p-2 border rounded"
+                    className="w-full p-3 border border-slate-200 rounded-xl text-sm text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all shadow-sm"
                     value={editForm.rank}
                     onChange={(e) => setEditForm((prev) => ({ ...prev, rank: e.target.value }))}
                   >
@@ -987,16 +1148,16 @@ export default function AdminDashboard(): React.ReactElement {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 mt-6 border-t pt-4">
+              <div className="flex justify-end gap-3 px-6 py-4 bg-slate-50/80 border-t border-slate-100">
                 <button
                   onClick={() => setEditingPilot(null)}
-                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded font-bold text-sm"
+                  className="px-5 py-2.5 text-slate-600 hover:bg-slate-100 rounded-xl font-bold text-sm transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSavePilot}
-                  className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold text-sm shadow-md"
+                  className="px-6 py-2.5 bg-sky-500 hover:bg-sky-600 text-white rounded-xl font-bold text-sm shadow-md hover:shadow-lg transition-all hover:-translate-y-0.5"
                 >
                   Save Changes
                 </button>
@@ -1006,40 +1167,44 @@ export default function AdminDashboard(): React.ReactElement {
         )}
 
         {/* Sync Section */}
-        <div className="p-4 border-t border-white bg-gray-50">
-          <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2 mb-2">
-            <RefreshCw className="w-4 h-4 text-blue-600" />
+        <div className="px-6 py-4 border-t border-slate-100 bg-white">
+          <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2 mb-3">
+            <RefreshCw className="w-4 h-4 text-sky-500" />
             AirLabs Schedule Sync
           </h3>
-          <div className="flex gap-2 items-center">
+          <div className="flex gap-3 items-center">
             <input
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder="Enter AirLabs API Key"
-              className="flex-1 p-2 border border-gray-300 rounded text-xs font-mono"
+              className="flex-1 p-3 border border-slate-200 rounded-xl text-xs font-mono text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all shadow-sm placeholder:text-slate-400"
             />
             <button
               onClick={handleSyncFlights}
               disabled={syncing || !apiKey}
-              className={`px-3 py-2 rounded text-xs font-bold text-white transition-colors ${syncing ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
-                }`}
+              className={`px-5 py-3 rounded-xl text-xs font-bold text-white transition-all shadow-sm ${
+                syncing
+                  ? 'bg-slate-300 cursor-not-allowed'
+                  : 'bg-sky-500 hover:bg-sky-600 hover:shadow-md hover:-translate-y-0.5'
+              }`}
             >
               {syncing ? 'Syncing...' : 'Sync Now'}
             </button>
           </div>
           {syncResult && (
             <div
-              className={`mt-2 p-2 rounded text-[10px] font-mono ${syncResult.includes('Error')
-                ? 'bg-red-100 text-red-700'
-                : 'bg-green-100 text-green-700'
-                }`}
+              className={`mt-3 p-3 rounded-xl text-xs font-mono font-medium ${
+                syncResult.includes('Error')
+                  ? 'bg-red-50 text-red-600 border border-red-200'
+                  : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+              }`}
             >
               {syncResult}
             </div>
           )}
         </div>
       </div>
-    </div >
+    </div>
   )
 }

@@ -1,19 +1,21 @@
-import { Notification } from 'electron'
-import { open, Protocol, SimConnectConnection } from 'node-simconnect'
+import { Notification, BrowserWindow } from 'electron'
+import { open, Protocol } from 'node-simconnect'
 
 export class MsfsService {
-  private handle: SimConnectConnection | null = null
-  private connected: boolean = false
+  private handle: any = null
+  private connected = false
   private interval: NodeJS.Timeout | null = null
-  private window: Electron.BrowserWindow
+  private window: BrowserWindow
   private wasOnGround: boolean = true
   private wasAirborne: boolean = false
   private recentVerticalSpeeds: number[] = []
-  private retryCount: number = 0
-  private dataDefinitionId: number = 1
-  private dataRequestId: number = 1
+  private retryCount = 0
 
-  constructor(window: Electron.BrowserWindow) {
+  // Use unique IDs to avoid conflicts
+  private dataDefinitionId = 111
+  private dataRequestId = 222
+
+  constructor(window: BrowserWindow) {
     this.window = window
     this.connect()
   }
@@ -28,28 +30,16 @@ export class MsfsService {
     try {
       this.retryCount++
 
-      if (this.retryCount <= 3) {
-        console.log(`[MSFS] Attempting connection... (attempt ${this.retryCount})`)
-      }
-
-      // Try to connect with MSFS 2024 protocol first, fall back to FSX_SP2
-      const { recvOpen, handle } = await open('Sky Express VA', Protocol.KittyHawk)
+      // use FSX_SP2 for maximum compatibility with Fenix
+      const { recvOpen, handle } = await open('Sky Express VA', Protocol.FSX_SP2)
 
       console.log('[MSFS] ✓ Connected to', recvOpen.applicationName)
+
       this.connected = true
       this.retryCount = 0
       this.handle = handle
       this.window.webContents.send('msfs-status', true)
       this.window.webContents.send('msfs-error', null)
-
-      try {
-        new Notification({
-          title: 'Sky Express VA',
-          body: `Connected to ${recvOpen.applicationName}`
-        }).show()
-      } catch (_e) {
-        // Notification might fail in some environments
-      }
 
       // Set up event handlers
       handle.on('exception', (recvException) => {
@@ -66,103 +56,227 @@ export class MsfsService {
         this.handleDisconnect()
       })
 
-      // Define the data we want to receive
-      handle.addToDataDefinition(
-        this.dataDefinitionId,
-        'PLANE LATITUDE',
-        'degrees',
-        5 // FLOAT64
-      )
-      handle.addToDataDefinition(this.dataDefinitionId, 'PLANE LONGITUDE', 'degrees', 5)
-      handle.addToDataDefinition(this.dataDefinitionId, 'PLANE ALTITUDE', 'feet', 5)
-      handle.addToDataDefinition(this.dataDefinitionId, 'PLANE HEADING DEGREES TRUE', 'degrees', 5)
-      handle.addToDataDefinition(this.dataDefinitionId, 'AIRSPEED INDICATED', 'knots', 5)
-      handle.addToDataDefinition(this.dataDefinitionId, 'GROUND VELOCITY', 'knots', 5)
-      handle.addToDataDefinition(this.dataDefinitionId, 'VERTICAL SPEED', 'feet/minute', 5)
-      handle.addToDataDefinition(
-        this.dataDefinitionId,
-        'SIM ON GROUND',
-        'bool',
-        4 // INT32
-      )
-      // Engine and parking brake for parking detection
-      handle.addToDataDefinition(
-        this.dataDefinitionId,
-        'ENG COMBUSTION:1',
-        'bool',
-        4 // INT32
-      )
-      handle.addToDataDefinition(
-        this.dataDefinitionId,
-        'BRAKE PARKING POSITION',
-        'bool',
-        4 // INT32
-      )
-      // Fuel for tracking
-      handle.addToDataDefinition(this.dataDefinitionId, 'FUEL TOTAL QUANTITY', 'gallons', 5)
-      // Bank angle for scoring
-      handle.addToDataDefinition(this.dataDefinitionId, 'PLANE BANK DEGREES', 'degrees', 5)
-      // G-Force for scoring
-      handle.addToDataDefinition(this.dataDefinitionId, 'G FORCE', 'GForce', 5)
-      // Landing Lights for scoring
-      handle.addToDataDefinition(
-        this.dataDefinitionId,
-        'LIGHT LANDING',
-        'bool',
-        4 // INT32
-      )
-      // Gear position for scoring
-      handle.addToDataDefinition(
-        this.dataDefinitionId,
-        'GEAR HANDLE POSITION',
-        'bool',
-        4 // INT32
-      )
+      // Use a FIXED DEFINITION ID
+      const DEF_ID = 100
+      this.dataDefinitionId = DEF_ID
+
+      // Structure:
+      // 1. IS USER SIM (INT32)
+      handle.addToDataDefinition(DEF_ID, 'IS USER SIM', 'bool', 1)
+
+      // 2. POSITION & ATTITUDE (FLOAT64)
+      handle.addToDataDefinition(DEF_ID, 'PLANE LATITUDE', 'degrees', 4)
+      handle.addToDataDefinition(DEF_ID, 'PLANE LONGITUDE', 'degrees', 4)
+      handle.addToDataDefinition(DEF_ID, 'PLANE ALTITUDE', 'feet', 4)
+      handle.addToDataDefinition(DEF_ID, 'PLANE HEADING DEGREES TRUE', 'degrees', 4)
+      handle.addToDataDefinition(DEF_ID, 'PLANE BANK DEGREES', 'degrees', 4)
+      handle.addToDataDefinition(DEF_ID, 'PLANE PITCH DEGREES', 'degrees', 4)
+
+      // 3. SPEED & G-FORCE (FLOAT64)
+      handle.addToDataDefinition(DEF_ID, 'AIRSPEED INDICATED', 'knots', 4)
+      handle.addToDataDefinition(DEF_ID, 'GROUND VELOCITY', 'knots', 4)
+      handle.addToDataDefinition(DEF_ID, 'VERTICAL SPEED', 'feet/minute', 4)
+      handle.addToDataDefinition(DEF_ID, 'G FORCE', 'gforce', 4)
+
+      // 4. SYSTEMS & ENGINES (INT32)
+      handle.addToDataDefinition(DEF_ID, 'SIM ON GROUND', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'ENG COMBUSTION:1', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'BRAKE PARKING POSITION', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'GEAR HANDLE POSITION', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'FLAPS HANDLE INDEX', 'number', 1)
+      // Lights
+      handle.addToDataDefinition(DEF_ID, 'LIGHT LANDING', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'LIGHT TAXI', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'LIGHT STROBE', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'LIGHT BEACON', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'LIGHT NAV', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'LIGHT CABIN', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'LIGHT LOGO', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'LIGHT WING', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'LIGHT PANEL', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'LIGHT RECOGNITION', 'bool', 1)
+      // Autopilot modes
+      handle.addToDataDefinition(DEF_ID, 'AUTOPILOT MASTER', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'AUTOPILOT HEADING LOCK', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'AUTOPILOT ALTITUDE LOCK', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'AUTOPILOT APPROACH HOLD', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'AUTOPILOT NAV1 LOCK', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'AUTOPILOT VERTICAL HOLD', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'AUTOPILOT FLIGHT LEVEL CHANGE', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'AUTOPILOT FLIGHT DIRECTOR ACTIVE', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'AUTOPILOT AIRSPEED HOLD', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'AUTOPILOT BACKCOURSE HOLD', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'AUTOPILOT ATTITUDE HOLD', 'bool', 1)
+      // Systems
+      handle.addToDataDefinition(DEF_ID, 'PITOT HEAT', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'PANEL ANTI ICE SWITCH', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'ENG ANTI ICE:1', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'STRUCTURAL DEICE SWITCH', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'WINDSHIELD DEICE SWITCH', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'AVIONICS MASTER SWITCH', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'ELECTRICAL MASTER BATTERY', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'GENERAL ENG MASTER ALTERNATOR:1', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'CABIN SEATBELTS ALERT SWITCH', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'CABIN NO SMOKING ALERT SWITCH', 'bool', 1)
+      // Spoilers
+      handle.addToDataDefinition(DEF_ID, 'SPOILERS ARMED', 'bool', 1)
+      handle.addToDataDefinition(DEF_ID, 'SPOILERS HANDLE POSITION', 'percent', 4)
+
+      // 5. FUEL (FLOAT64)
+      handle.addToDataDefinition(DEF_ID, 'FUEL TOTAL QUANTITY', 'gallons', 4)
 
       // Handle incoming data
       handle.on('simObjectData', (recvData) => {
         if (recvData.requestID === this.dataRequestId) {
           try {
             const data = recvData.data
+
+            // READ DATA IN EXACT ORDER OF DEFINITION
+            // 1. IS USER SIM
+            data.readInt() // Offset 0
+
+            // 2. POSITION & ATTITUDE
+            const lat = data.readDouble() // Offset 4
+            const lon = data.readDouble() // Offset 12
+            const alt = data.readDouble() // Offset 20
+            const hdg = data.readDouble() // Offset 28
+            const bank = data.readDouble() // Offset 36
+            const pitch = data.readDouble() // Offset 44
+
+            // 3. SPEED & G-FORCE
+            const speed = data.readDouble() // Offset 52
+            const gSpeed = data.readDouble() // Offset 60
+            const vSpeed = data.readDouble() // Offset 68
+            const gForce = data.readDouble() // Offset 76
+
+            // 4. SYSTEMS & ENGINES
+            const onGround = data.readInt() !== 0
+            const engineRunning = data.readInt() !== 0
+            const parkingBrake = data.readInt() !== 0
+            const gearDown = data.readInt() !== 0
+            const flaps = data.readInt()
+            // Lights
+            const landingLights = data.readInt() !== 0
+            const taxiLights = data.readInt() !== 0
+            const strobeLights = data.readInt() !== 0
+            const beaconLights = data.readInt() !== 0
+            const navLights = data.readInt() !== 0
+            const cabinLights = data.readInt() !== 0
+            const logoLights = data.readInt() !== 0
+            const wingLights = data.readInt() !== 0
+            const panelLights = data.readInt() !== 0
+            const recognitionLights = data.readInt() !== 0
+            // Autopilot modes
+            const autopilot = data.readInt() !== 0
+            const apHeading = data.readInt() !== 0
+            const apAltitude = data.readInt() !== 0
+            const apApproach = data.readInt() !== 0
+            const apNav = data.readInt() !== 0
+            const apVerticalSpeed = data.readInt() !== 0
+            const apFlc = data.readInt() !== 0
+            const apFlightDirector = data.readInt() !== 0
+            const apSpeedHold = data.readInt() !== 0
+            const apBackcourse = data.readInt() !== 0
+            const apAttitude = data.readInt() !== 0
+            // Systems
+            const pitotHeat = data.readInt() !== 0
+            const antiIce = data.readInt() !== 0
+            const engAntiIce = data.readInt() !== 0
+            const structuralDeice = data.readInt() !== 0
+            const windshieldDeice = data.readInt() !== 0
+            const avionicsMaster = data.readInt() !== 0
+            const masterBattery = data.readInt() !== 0
+            const masterAlternator = data.readInt() !== 0
+            const seatbelts = data.readInt() !== 0
+            const noSmoking = data.readInt() !== 0
+            // Spoilers
+            const spoilersArmed = data.readInt() !== 0
+            const spoilersPosition = data.readDouble()
+
+            // 5. FUEL
+            const fuel = data.readDouble()
+
             const telemetry = {
-              latitude: data.readFloat64(),
-              longitude: data.readFloat64(),
-              altitude: data.readFloat64(),
-              heading: data.readFloat64(),
-              speed: data.readFloat64(),
-              groundspeed: data.readFloat64(),
-              vertical_speed: data.readFloat64(),
-              onGround: data.readInt32() !== 0,
-              engineRunning: data.readInt32() !== 0,
-              parkingBrake: data.readInt32() !== 0,
-              fuelQuantity: data.readFloat64(),
-              bankAngle: data.readFloat64(),
-              gForce: data.readFloat64(),
-              landingLights: data.readInt32() !== 0,
-              gearDown: data.readInt32() !== 0
+              latitude: lat,
+              longitude: lon,
+              altitude: alt,
+              heading: hdg,
+              bankAngle: bank,
+              pitchAngle: pitch,
+
+              speed: speed,
+              groundspeed: gSpeed,
+              vertical_speed: vSpeed,
+              gForce: gForce,
+
+              onGround,
+              engineRunning,
+              parkingBrake,
+              fuelQuantity: fuel,
+              // Flight Controls
+              gearDown,
+              flaps,
+              spoilersArmed,
+              spoilersPosition: Math.round(spoilersPosition),
+              // Lights
+              landingLights,
+              taxiLights,
+              strobeLights,
+              beaconLights,
+              navLights,
+              cabinLights,
+              logoLights,
+              wingLights,
+              panelLights,
+              recognitionLights,
+              // Autopilot
+              autopilot,
+              apHeading,
+              apAltitude,
+              apApproach,
+              apNav,
+              apVerticalSpeed,
+              apFlc,
+              apFlightDirector,
+              apSpeedHold,
+              apBackcourse,
+              apAttitude,
+              // Systems
+              pitotHeat,
+              antiIce,
+              engAntiIce,
+              structuralDeice,
+              windshieldDeice,
+              avionicsMaster,
+              masterBattery,
+              masterAlternator,
+              seatbelts,
+              noSmoking
             }
 
-            // Track if aircraft was ever airborne this session
-            if (!telemetry.onGround && telemetry.groundspeed > 50) {
-              this.wasAirborne = true
-            }
+            this.window.webContents.send('msfs-data', telemetry)
 
+            // Run flight detection methods
             this.detectLanding(telemetry)
             this.monitorFlight(telemetry)
             this.detectParking(telemetry)
-            this.window.webContents.send('msfs-data', telemetry)
-          } catch (_e) {
-            // Ignore data parsing errors
+
+            // Track airborne state for parking detection
+            if (!onGround && gSpeed > 50) {
+              this.wasAirborne = true
+            }
+          } catch (e: any) {
+            console.error('[MSFS] Parse Error:', e.message)
           }
         }
       })
 
-      // Request data every second
       handle.requestDataOnSimObject(
         this.dataRequestId,
         this.dataDefinitionId,
-        0, // SIMCONNECT_OBJECT_ID_USER
-        4, // SIMCONNECT_PERIOD_SECOND
+        0,
+        4, // SIMCONNECT_PERIOD_SECOND (1Hz)
+        0,
         0,
         0,
         0

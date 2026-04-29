@@ -11,7 +11,6 @@ export const Register = () => {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [adminCode, setAdminCode] = useState('')
   const [customCallsign, setCustomCallsign] = useState('SEH')
   const [callsignError, setCallsignError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -72,17 +71,6 @@ export const Register = () => {
     const isValid = await validateCallsign(customCallsign)
     if (!isValid) return
 
-    // Check Admin Code
-    let isAdmin = false
-    if (adminCode) {
-      if (adminCode === '1ds343423kj4h') {
-        isAdmin = true
-      } else {
-        setGeneralError('Invalid Administrator Code.')
-        return
-      }
-    }
-
     setLoading(true)
 
     try {
@@ -92,8 +80,7 @@ export const Register = () => {
         name,
         email,
         homeBase: homeBase as any,
-        password,
-        isAdmin // Pass admin flag
+        password
       })
       setRegistrationSuccess(true)
     } catch (error: any) {
@@ -219,18 +206,6 @@ export const Register = () => {
                   className="col-span-2 border-2 border-gray-400 border-r-white border-b-white bg-white px-1 py-0.5 outline-none focus:bg-yellow-50"
                   required
                   placeholder="Confirm Password"
-                />
-              </div>
-
-              {/* Admin Code Section */}
-              <div className="grid grid-cols-3 items-center gap-2 pt-2 border-t border-gray-300 border-dashed">
-                <label className="text-right font-bold text-purple-800">Admin Code:</label>
-                <input
-                  type="password"
-                  value={adminCode}
-                  onChange={(e) => setAdminCode(e.target.value)}
-                  className="col-span-2 border-2 border-purple-200 border-r-white border-b-white bg-purple-50 px-1 py-0.5 outline-none focus:bg-purple-100"
-                  placeholder="Optional (For Staff)"
                 />
               </div>
 

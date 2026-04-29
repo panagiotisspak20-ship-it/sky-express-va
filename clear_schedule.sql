@@ -1,2 +1,1 @@
--- Clear all schedule data (Reset)
-truncate table flight_schedules;
+DELETE FROM flight_schedules;

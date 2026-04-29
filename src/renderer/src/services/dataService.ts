@@ -182,6 +182,7 @@ export interface SystemAnnouncement {
   message: string
   author_id: string
   created_at: string
+  updated_at?: string
   is_active: boolean
   author?: PilotProfile
 }
@@ -283,7 +284,7 @@ export const DataService = {
       .from('fleet')
       .select('*')
       .order('registration', { ascending: true })
-    
+
     if (error) {
       console.error('Error fetching fleet:', error)
       return []
@@ -291,32 +292,24 @@ export const DataService = {
     return data as Aircraft[]
   },
 
-  async addAircraft(aircraft: Omit<Aircraft, 'id' | 'total_hours' | 'condition' | 'last_maintenance'>) {
-    const { data, error } = await supabase
-      .from('fleet')
-      .insert(aircraft)
-      .select()
-      .single()
-    
+  async addAircraft(
+    aircraft: Omit<Aircraft, 'id' | 'total_hours' | 'condition' | 'last_maintenance'>
+  ) {
+    const { data, error } = await supabase.from('fleet').insert(aircraft).select().single()
+
     if (error) throw error
     return data
   },
 
   async updateAircraft(id: string, updates: Partial<Aircraft>) {
-    const { error } = await supabase
-      .from('fleet')
-      .update(updates)
-      .eq('id', id)
-    
+    const { error } = await supabase.from('fleet').update(updates).eq('id', id)
+
     if (error) throw error
   },
 
   async deleteAircraft(id: string) {
-    const { error } = await supabase
-      .from('fleet')
-      .delete()
-      .eq('id', id)
-    
+    const { error } = await supabase.from('fleet').delete().eq('id', id)
+
     if (error) throw error
   },
 
@@ -410,27 +403,40 @@ export const DataService = {
       })
 
       if (error) {
-        // Likely unique constraint if checking ownership, but typical logic:
         return { success: false, message: 'Could not acquire item (check if already owned).' }
       }
       return { success: true, message: `Admin Power: Acquired ${item.name} for free!` }
     }
 
-    // Normal User Flow
+    // Normal User Flow — Optimistic locking: atomic deduct with WHERE balance >= price
     if (profile.balance < item.price) {
       return { success: false, message: 'Insufficient funds!' }
     }
 
-    // 2. Start Transaction (simple sequential)
-    // Deduct
-    const newBalance = profile.balance - item.price
-    await supabase.from('profiles').update({ balance: newBalance }).eq('id', user.id)
+    // Atomically deduct balance using RPC to prevent race conditions
+    const { error: deductError } = await supabase.rpc('deduct_profile_balance', {
+      deduction: item.price
+    })
+
+    if (deductError) {
+      return {
+        success: false,
+        message: 'Insufficient funds or transaction failed. Please try again.'
+      }
+    }
 
     // Add to Inventory
-    await supabase.from('inventory').insert({
+    const { error: invError } = await supabase.from('inventory').insert({
       pilot_id: user.id,
       item_id: item.id
     })
+
+    if (invError) {
+      // Refund if inventory insert fails (e.g. already owned)
+      // Since it's an edge case, we can manually refund safely assuming no high concurrency on refund
+      await supabase.from('profiles').update({ balance: profile.balance }).eq('id', user.id)
+      return { success: false, message: 'Could not acquire item (check if already owned).' }
+    }
 
     // Log Transaction
     await supabase.from('transactions').insert({
@@ -483,7 +489,7 @@ export const DataService = {
   },
 
   // --- RANKS ---
-  
+
   async getRanks(): Promise<PilotRank[]> {
     const { data, error } = await supabase
       .from('ranks')
@@ -498,21 +504,25 @@ export const DataService = {
   },
 
   async checkRankPromotion(pilotId: string, currentHours: number) {
-     const ranks = await this.getRanks()
-     if (ranks.length === 0) return
+    const ranks = await this.getRanks()
+    if (ranks.length === 0) return
 
-     // Find highest eligible rank
-     const eligibleRank = [...ranks].reverse().find(r => currentHours >= r.min_hours)
-     if (!eligibleRank) return
+    // Find highest eligible rank
+    const eligibleRank = [...ranks].reverse().find((r) => currentHours >= r.min_hours)
+    if (!eligibleRank) return
 
-     // Get current profile to check if update needed
-     const { data: profile } = await supabase.from('profiles').select('rank_id').eq('id', pilotId).single()
-     
-     if (profile && profile.rank_id !== eligibleRank.id) {
-        // Promote!
-        await supabase.from('profiles').update({ rank_id: eligibleRank.id }).eq('id', pilotId)
-        // Could enable a notification here if we had a system for it
-     }
+    // Get current profile to check if update needed
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('rank_id')
+      .eq('id', pilotId)
+      .single()
+
+    if (profile && profile.rank_id !== eligibleRank.id) {
+      // Promote!
+      await supabase.from('profiles').update({ rank_id: eligibleRank.id }).eq('id', pilotId)
+      // Could enable a notification here if we had a system for it
+    }
   },
 
   // --- TOURS & BADGES ---
@@ -549,6 +559,23 @@ export const DataService = {
       current_leg_order: 1,
       status: 'in-progress'
     })
+
+    if (error) throw error
+  },
+
+  async cancelTour(tourId: string) {
+    const {
+      data: { user }
+    } = await supabase.auth.getUser()
+    if (!user) return
+
+    // Safely delete ONLY if the pilot hasn't progressed past leg 1
+    const { error } = await supabase
+      .from('pilot_tours')
+      .delete()
+      .eq('pilot_id', user.id)
+      .eq('tour_id', tourId)
+      .eq('current_leg_order', 1)
 
     if (error) throw error
   },
@@ -663,19 +690,30 @@ export const DataService = {
   // --- PROFILE ---
 
   async getProfile(): Promise<PilotProfile> {
+    // BUG FIX: Use getSession() instead of getUser(). getUser() hits the network
+    // and throws if offline. getSession reads from LocalStorage allowing us
+    // to keep `user.id` for fallback state checks.
     const {
-      data: { user }
-    } = await supabase.auth.getUser()
+      data: { session },
+      error: sessionError
+    } = await supabase.auth.getSession()
+
+    if (sessionError) console.error('Session error:', sessionError)
+    const user = session?.user
     if (!user) return DEFAULT_PROFILE
 
     try {
-      const { data, error } = await supabase.from('profiles').select('*, rank:ranks(*)').eq('id', user.id).single()
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*, rank:ranks(*)')
+        .eq('id', user.id)
+        .single()
 
       if (error) throw error
       if (data) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const rankName = (data.rank as any)?.name || 'Cadet'
-        
+
         return {
           id: data.id,
           callsign: data.callsign,
@@ -690,19 +728,24 @@ export const DataService = {
           simBriefId: data.simbrief_id,
           vatsimId: data.vatsim_id, // Bug N: return vatsimId from DB
           isAdmin: data.is_admin || false,
-        status: data.status || 'active',
-        equipped_background: data.equipped_background,
-        equipped_frame: data.equipped_frame,
-        equipped_color: data.equipped_color,
-        // Store tutorial complete in local storage for now to avoid DB schema change for MVP
-        tutorialComplete: localStorage.getItem(`tutorial_${user.id}`) === 'true'
-      }
+          status: data.status || 'active',
+          equipped_background: data.equipped_background,
+          equipped_frame: data.equipped_frame,
+          equipped_color: data.equipped_color,
+          // Store tutorial complete in local storage for now to avoid DB schema change for MVP
+          tutorialComplete: localStorage.getItem(`tutorial_${user.id}`) === 'true'
+        }
       }
     } catch (e) {
       console.error('Error fetching profile:', e)
     }
 
-    return DEFAULT_PROFILE
+    // Fallback: If network failed, ensure we still preserve local tutorial state
+    // to prevent infinite tutorial popup loops while offline
+    return {
+      ...DEFAULT_PROFILE,
+      tutorialComplete: localStorage.getItem(`tutorial_${user.id}`) === 'true'
+    }
   },
 
   async updateProfile(updates: Partial<PilotProfile>) {
@@ -712,13 +755,13 @@ export const DataService = {
     if (!user) return
 
     // Map frontend fields to DB columns
+    // NOTE: balance and flightHours are NOT directly settable here for security.
+    // Use incrementProfileStats() for those fields.
     const dbUpdates: Record<string, any> = {}
-    if (updates.flightHours !== undefined) dbUpdates.flight_hours = updates.flightHours
-    if (updates.balance !== undefined) dbUpdates.balance = updates.balance
     if (updates.simBriefUsername !== undefined)
       dbUpdates.simbrief_username = updates.simBriefUsername
     if (updates.simBriefId !== undefined) dbUpdates.simbrief_id = updates.simBriefId
-    if (updates.vatsimId !== undefined) dbUpdates.vatsim_id = updates.vatsimId // Bug M: map vatsimId to DB
+    if (updates.vatsimId !== undefined) dbUpdates.vatsim_id = updates.vatsimId
     if (updates.avatar_url !== undefined) dbUpdates.avatar_url = updates.avatar_url
 
     // Handle tutorial separately (local for now)
@@ -729,6 +772,28 @@ export const DataService = {
     if (Object.keys(dbUpdates).length > 0) {
       const { error } = await supabase.from('profiles').update(dbUpdates).eq('id', user.id)
       if (error) throw error
+    }
+  },
+
+  /**
+   * Safely increment flight hours and balance after a completed flight.
+   * Uses the current DB value + delta instead of setting an absolute value.
+   */
+  async incrementProfileStats(addHours: number, addBalance: number) {
+    const {
+      data: { user }
+    } = await supabase.auth.getUser()
+    if (!user) return
+
+    // Atomically increment using RPC to prevent race conditions on concurrent flight submissions
+    const { error } = await supabase.rpc('increment_profile_stats', {
+      p_add_hours: addHours,
+      p_add_balance: addBalance
+    })
+
+    if (error) {
+      console.error('Error incrementing profile stats:', error)
+      throw error
     }
   },
 
@@ -802,13 +867,13 @@ export const DataService = {
   // --- FLIGHT LOGS (Local for MVP) ---
 
   async getPireps(pilotId?: string): Promise<any[]> {
-    const query = supabase
+    let query = supabase
       .from('completed_flights')
       .select('*, profiles(callsign)')
       .order('created_at', { ascending: false })
 
     if (pilotId) {
-      query.eq('pilot_id', pilotId)
+      query = query.eq('pilot_id', pilotId)
     }
 
     const { data, error } = await query
@@ -927,10 +992,18 @@ export const DataService = {
       flight_events: entry.events || [],
       max_bank: entry.systemStats?.maxBankAngle || entry.max_bank || 0,
       max_g: entry.systemStats?.maxG || entry.max_g || 1,
-      landing_lights_penalty: entry.systemStats?.landingLightsOffBelow10k || entry.landing_lights_penalty || false,
+      landing_lights_penalty:
+        entry.systemStats?.landingLightsOffBelow10k || entry.landing_lights_penalty || false,
       flight_path: entry.flightPath || [],
       landing_data: entry.landingData || [],
-      flight_data: entry
+      flight_data: {
+        maxAltitude: entry.maxAltitude || 0,
+        maxSpeed: entry.maxSpeed || 0,
+        fuelUsed: entry.fuelUsed || 0,
+        landedAt: entry.landedAt,
+        otp: entry.otp,
+        systemStats: entry.systemStats
+      }
     })
 
     if (error) {
@@ -942,16 +1015,13 @@ export const DataService = {
     // CHECK TOUR PROGRESS
     await this.checkTourProgress({ departure: entry.departure, arrival: entry.arrival })
 
-    // Update Profile Stats
+    // Update Profile Stats — use safe increment instead of absolute set
+    const addedHours = entry.duration / 60
+    await this.incrementProfileStats(addedHours, entry.earnings)
+    // Check Rank - Automatically promote if eligible
     const profile = await this.getProfile()
     if (profile) {
-      const newHours = profile.flightHours + entry.duration / 60
-      await this.updateProfile({
-        flightHours: newHours,
-        balance: profile.balance + entry.earnings
-      })
-      // Check Rank - Automatically promote if eligible
-      await this.checkRankPromotion(user.id, newHours)
+      await this.checkRankPromotion(user.id, profile.flightHours)
     }
     return newLog
   },
@@ -1002,10 +1072,16 @@ export const DataService = {
   async generateCallsign(): Promise<string> {
     let callsign = ''
     let available = false
+    const MAX_ATTEMPTS = 50
+    let attempts = 0
     while (!available) {
+      if (attempts >= MAX_ATTEMPTS) {
+        throw new Error('Unable to generate a unique callsign. Please try manually.')
+      }
       const num = Math.floor(Math.random() * 9000) + 1000
       callsign = `SEH${num}`
       available = await this.checkCallsignAvailable(callsign)
+      attempts++
     }
     return callsign
   },
@@ -1203,8 +1279,18 @@ export const DataService = {
     } = await supabase.auth.getUser()
     if (!user) throw new Error('Not authenticated')
 
-    // Create a unique file path: avatars/USER_ID/timestamp.png
-    const fileExt = file.name.split('.').pop()
+    // Validate file type and size
+    const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+    const MAX_SIZE_MB = 2
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      throw new Error('Invalid file type. Only JPEG, PNG, WebP, and GIF are allowed.')
+    }
+    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+      throw new Error(`File too large. Maximum size is ${MAX_SIZE_MB}MB.`)
+    }
+
+    // Create a unique file path: avatars/USER_ID/timestamp.ext
+    const fileExt = file.name.split('.').pop()?.toLowerCase() || 'png'
     const fileName = `${Date.now()}.${fileExt}`
     const filePath = `${user.id}/${fileName}`
 
@@ -1225,7 +1311,7 @@ export const DataService = {
     try {
       // Fetch JSON from SimBrief
       const response = await fetch(
-        `https://www.simbrief.com/api/xml.fetcher.php?username=${username}&json=1`
+        `https://www.simbrief.com/api/xml.fetcher.php?username=${encodeURIComponent(username)}&json=1`
       )
       if (!response.ok) {
         throw new Error(`SimBrief API Error: ${response.statusText}`)
@@ -1305,12 +1391,33 @@ export const DataService = {
     } = await supabase.auth.getUser()
     if (!user) return []
 
-    const { data } = await supabase
+    // 1. Get legacy social_connections
+    const { data: conns } = await supabase
       .from('social_connections')
       .select('following_id')
       .eq('follower_id', user.id)
 
-    return data ? data.map((d) => d.following_id) : []
+    // 2. Get accepted friend_requests where user is the sender
+    const { data: req1 } = await supabase
+      .from('friend_requests')
+      .select('receiver_id')
+      .eq('sender_id', user.id)
+      .eq('status', 'accepted')
+
+    // 3. Get accepted friend_requests where user is the receiver
+    const { data: req2 } = await supabase
+      .from('friend_requests')
+      .select('sender_id')
+      .eq('receiver_id', user.id)
+      .eq('status', 'accepted')
+
+    const followingSet = new Set<string>()
+
+    if (conns) conns.forEach((d) => followingSet.add(d.following_id))
+    if (req1) req1.forEach((d) => followingSet.add(d.receiver_id))
+    if (req2) req2.forEach((d) => followingSet.add(d.sender_id))
+
+    return Array.from(followingSet)
   },
 
   // --- FRIEND REQUESTS ---
@@ -1344,6 +1451,39 @@ export const DataService = {
     if (error) {
       // Ignore unique constraint error (means request already sent)
       if (error.code !== '23505') throw error
+    }
+  },
+
+  async cancelConnectionRequest(targetId: string) {
+    const {
+      data: { user }
+    } = await supabase.auth.getUser()
+    if (!user) return
+
+    const { error } = await supabase
+      .from('friend_requests')
+      .delete()
+      .eq('sender_id', user.id)
+      .eq('receiver_id', targetId)
+      .eq('status', 'pending')
+
+    if (error) throw error
+  },
+
+  async updateAnnouncement(id: string, newMessage: string) {
+    const {
+      data: { user }
+    } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const { error } = await supabase
+      .from('system_announcements')
+      .update({ message: newMessage })
+      .eq('id', id)
+
+    if (error) {
+      console.error('Failed to update announcement:', error)
+      throw error
     }
   },
 
@@ -1417,7 +1557,8 @@ export const DataService = {
 
     const { error } = await supabase.from('system_announcements').insert({
       message,
-      author_id: user.id
+      author_id: user.id,
+      is_active: true
     })
 
     if (error) throw error
@@ -1450,6 +1591,18 @@ export const DataService = {
 
   // --- ADMIN USER MANAGEMENT ---
   async adminUpdatePilot(pilotId: string, updates: Partial<PilotProfile>) {
+    // Verify caller is admin
+    const {
+      data: { user }
+    } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+    const { data: callerProfile } = await supabase
+      .from('profiles')
+      .select('is_admin')
+      .eq('id', user.id)
+      .single()
+    if (!callerProfile?.is_admin) throw new Error('Unauthorized: Admin access required')
+
     // Map frontend field names to database column names
     const dbUpdates: Record<string, any> = {}
     if (updates.flightHours !== undefined) dbUpdates.flight_hours = updates.flightHours
@@ -1484,15 +1637,19 @@ export const DataService = {
     if (!user) return
 
     // Verify Admin
-    const { data: profile } = await supabase.from('profiles').select('is_admin').eq('id', user.id).single()
-    if (!profile?.is_admin) throw new Error("Unauthorized")
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('is_admin')
+      .eq('id', user.id)
+      .single()
+    if (!profile?.is_admin) throw new Error('Unauthorized')
 
     // We use a neat trick: execute SQL via Supabase RPC by creating a general-purpose query runner
     // if one exists, OR we can just try to hit the edge functions/REST if applicable.
     // However, since we can't easily run raw DDL from the JS client without a custom RPC,
     // we will instead instruct the user to run the SQL in the Supabase Dashboard SQL Editor,
     // OR we can create the RPC here if an exec sql function exists.
-    
+
     // We will just try calling the RPC. If it fails, we know it's not setup.
   },
 
@@ -1515,13 +1672,15 @@ export const DataService = {
       .eq('pilot_id', user.id)
 
     if (error) {
-       console.error('[DataService] update error:', error)
-       throw error
+      console.error('[DataService] update error:', error)
+      throw error
     }
   },
 
   async getPendingDeletions(): Promise<(FlightLogEntry & { pilotCallsign?: string })[]> {
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user }
+    } = await supabase.auth.getUser()
     if (!user) throw new Error('Not authenticated')
 
     const { data, error } = await supabase
@@ -1555,7 +1714,9 @@ export const DataService = {
   },
 
   async approveFlightDeletion(flightId: string) {
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user }
+    } = await supabase.auth.getUser()
     if (!user) throw new Error('Not authenticated')
 
     const { error } = await supabase.rpc('admin_approve_flight_deletion', {
@@ -1569,7 +1730,9 @@ export const DataService = {
   },
 
   async rejectFlightDeletion(flightId: string) {
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user }
+    } = await supabase.auth.getUser()
     if (!user) throw new Error('Not authenticated')
 
     const { error } = await supabase
@@ -1826,8 +1989,11 @@ export const DataService = {
         try {
           if (!route.dep_time || typeof route.dep_time !== 'string') continue
 
-          // Parse Time "HH:MM"
-          const parts = route.dep_time.split(':')
+          // Parse Time "HH:MM" (AirLabs may send "YYYY-MM-DD HH:MM")
+          const timeStr = route.dep_time.includes(' ')
+            ? route.dep_time.split(' ')[1]
+            : route.dep_time
+          const parts = timeStr.split(':')
           if (parts.length !== 2) continue
 
           const depH = parseInt(parts[0], 10)
@@ -1872,41 +2038,32 @@ export const DataService = {
       const start = new Date(now)
       start.setHours(0, 0, 0, 0)
 
-      const daysToSync = 30
-      const end = new Date(now)
+      // Calculate exactly 1 calendar month ahead (handles 28/29/30/31 days)
+      const nextMonthDate = new Date(start)
+      nextMonthDate.setMonth(nextMonthDate.getMonth() + 1)
+      const diffTime = Math.abs(nextMonthDate.getTime() - start.getTime())
+      const daysToSync = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+      const end = new Date(start)
       end.setDate(end.getDate() + daysToSync)
       end.setHours(23, 59, 59, 999)
 
-      // A. Delete existing SCHEDULED flights for this range to prevent duplicates
-      const { error: deleteError } = await supabase
-        .from('flight_schedules')
-        .delete()
-        .eq('status', 'scheduled')
-        .gte('departure_time', start.toISOString())
-        .lte('departure_time', end.toISOString())
-
-      if (deleteError) {
-        console.error('Error clearing old schedules:', deleteError)
-        throw deleteError
-      }
-
-      // B. Generate and Insert New for 30 days
+      // A. Generate flights for the calendar month
+      console.log(`[Sync] Raw schedules from API: ${schedules.length}, Days to sync: ${daysToSync}`)
       const allFlightsToInsert: any[] = []
 
       for (let i = 0; i < daysToSync; i++) {
         const currentDay = new Date(start)
         currentDay.setDate(currentDay.getDate() + i)
 
-        // For each route in our processed list (which was based on "today's" schedule or generic schedule)
-        // we create a concrete flight for 'currentDay'.
-        // Note: 'processedFlights' currently has hardcoded dates for "today".
-        // We need to re-generate the timestamp for each day.
-
         for (const route of schedules) {
           try {
             if (!route.dep_time || typeof route.dep_time !== 'string') continue
 
-            const parts = route.dep_time.split(':')
+            const timeStr = route.dep_time.includes(' ')
+              ? route.dep_time.split(' ')[1]
+              : route.dep_time
+            const parts = timeStr.split(':')
             if (parts.length !== 2) continue
 
             const depH = parseInt(parts[0], 10)
@@ -1914,25 +2071,17 @@ export const DataService = {
 
             if (isNaN(depH) || isNaN(depM)) continue
 
-            // Set time for current iteration day
             const depTime = new Date(currentDay)
-            depTime.setUTCHours(depH, depM, 0, 0) // Bug S: use UTC
+            depTime.setUTCHours(depH, depM, 0, 0)
 
             if (isNaN(depTime.getTime())) continue
 
             const duration = Number(route.duration) || 60
             const arrTime = new Date(depTime.getTime() + duration * 60000)
 
-            // Basic check: Filter by days running?
-            // route.days is like "1234567" (Mon-Sun).
-            // JS getDay(): 0=Sun, 1=Mon...6=Sat.
-            // AirLabs usually uses 1=Mon...7=Sun? Or similar.
-            // Let's assume inclusive. If route.days is string of digits.
-            let runDay = depTime.getDay() // 0-6
-            if (runDay === 0) runDay = 7 // Convert Sun 0 to 7 to match typical aviation standard if needed
+            let runDay = depTime.getDay()
+            if (runDay === 0) runDay = 7
 
-            // If route.days exists and doesn't include this day, skip.
-            // If route.days is null/empty, assume daily.
             if (route.days && !route.days.includes(String(runDay))) {
               continue
             }
@@ -1948,19 +2097,33 @@ export const DataService = {
               airline_icao: route.airline_icao || 'GQE'
             })
           } catch (err) {
-            // ignore
+            // ignore malformed route
           }
         }
       }
 
-      if (allFlightsToInsert.length > 0) {
-        // Insert in chunks to avoid payload limit? 30 days * 50 flights = 1500 rows. Should be fine.
-        const { error } = await supabase.from('flight_schedules').insert(allFlightsToInsert)
-        if (error) throw error
+      // B. De-duplicate flights before Upsert (ON CONFLICT cannot handle duplicates within the same batch)
+      const uniqueFlightsMap = new Map<string, any>()
+      for (const flight of allFlightsToInsert) {
+        const key = `${flight.flight_number}-${flight.departure_time}`
+        uniqueFlightsMap.set(key, flight)
+      }
+      const uniqueFlightsToInsert = Array.from(uniqueFlightsMap.values())
+
+      // C. Upsert flights (insert new, update existing) using the unique constraint
+      if (uniqueFlightsToInsert.length > 0) {
+        const chunkSize = 500
+        for (let c = 0; c < uniqueFlightsToInsert.length; c += chunkSize) {
+          const chunk = uniqueFlightsToInsert.slice(c, c + chunkSize)
+          const { error } = await supabase
+            .from('flight_schedules')
+            .upsert(chunk, { onConflict: 'flight_number,departure_time' })
+          if (error) throw error
+        }
       }
 
       return {
-        message: `Successfully synced ${allFlightsToInsert.length} flights for the next ${daysToSync} days.`
+        message: `Successfully synced ${uniqueFlightsToInsert.length} unique flights for the next ${daysToSync} days.`
       }
     } catch (err: any) {
       console.error('Sync Error:', err)
@@ -1969,72 +2132,71 @@ export const DataService = {
   },
 
   // --- PRESENCE (Who is Online) ---
-  
+
   // Keep track of the channel so we can unsubscribe or use it
   presenceChannel: null as RealtimeChannel | null,
+  _presenceSetupId: 0,
 
   subscribeToActiveFlights(onUpdate: () => void): RealtimeChannel {
-      return supabase
-        .channel('active_flights_changes')
-        .on(
-            'postgres_changes',
-            { event: '*', schema: 'public', table: 'active_flights' },
-            () => {
-                onUpdate()
-            }
-        )
-        .subscribe()
+    return supabase
+      .channel('active_flights_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'active_flights' }, () => {
+        onUpdate()
+      })
+      .subscribe()
   },
 
   unsubscribe(channel: RealtimeChannel) {
-      supabase.removeChannel(channel)
+    supabase.removeChannel(channel)
   },
 
-  subscribeToPresence(
+  async subscribeToPresence(
     callback: (users: OnlineUser[]) => void,
     onStatus?: (status: string) => void
   ) {
-    if (this.presenceChannel) {
-      console.log('[Presence] Reuse existing channel')
-      // If already subscribed, just attach the callback? 
-      // Problem: Generic callback support is hard with single channel.
-      // For now, we assume only ONE component uses this (WhoIsOnline). 
-      // If we need multiple listeners, we need an event emitter.
-      // But re-subscribing the same channel object is safe-ish.
-      
-      // Better: Just return the existing channel and ensure the listener is added.
-      // But 'on' listeners are additive. If we call this multiple times, we add multiple listeners.
-      // So we should probably unsubscribe previous if expected behavior is "replace".
-      // But typically we just want to avoid *connecting* twice.
-    } else {
-        console.log('[Presence] Creating new channel')
-        this.presenceChannel = supabase.channel('room_online_users', {
-            config: {
-                presence: {
-                    key: 'user-' + Math.random().toString(36).substring(7)
-                }
-            }
-        })
-      }
+    const currentSetupId = ++this._presenceSetupId
 
-    // Remove existing 'sync' listeners to avoid duplicates if re-subscribing
-    // Note: This is an internal Supabase implementation detail, but 'channel.on' adds listeners.
-    // Ideally we shouldn't be calling this multiple times unless component remounts.
-    
+    // Get user ID for a stable presence key
+    const {
+      data: { user: presenceUser }
+    } = await supabase.auth.getUser()
+    const presenceKey = presenceUser ? `user-${presenceUser.id}` : `user-anon-${Date.now()}`
+
+    if (currentSetupId !== this._presenceSetupId) {
+      console.log('[Presence] Aborting stale setup')
+      return null
+    }
+
+    if (this.presenceChannel) {
+      // Unsubscribe the old channel to prevent duplicate listeners on remount
+      console.log('[Presence] Cleaning up previous channel before re-subscribing')
+      supabase.removeChannel(this.presenceChannel)
+      this.presenceChannel = null
+    }
+
+    console.log('[Presence] Creating new channel')
+    this.presenceChannel = supabase.channel('room_online_users', {
+      config: {
+        presence: {
+          key: presenceKey
+        }
+      }
+    })
+
     this.presenceChannel
       .on('presence', { event: 'sync' }, () => {
         if (!this.presenceChannel) return
-        
+
         const newState = this.presenceChannel.presenceState()
         // Flatten and convert, acknowledging the extra presence_ref
         const userlist = Object.values(newState).flat() as unknown as OnlineUser[]
-        
+
         console.log('[Presence] Sync:', userlist)
         callback(userlist)
       })
       .subscribe(async (status) => {
         if (onStatus) onStatus(status)
-        
+
         if (status === 'SUBSCRIBED') {
           const {
             data: { user }
@@ -2044,11 +2206,11 @@ export const DataService = {
             // Get rich profile data to share
             let profile: PilotProfile | null = null
             try {
-                profile = await this.getProfile()
+              profile = await this.getProfile()
             } catch (err) {
-                console.error('[Presence] Error fetching profile via getProfile:', err)
+              console.error('[Presence] Error fetching profile via getProfile:', err)
             }
-            
+
             const presenceState = {
               user_id: user.id,
               online_at: new Date().toISOString(),
@@ -2058,11 +2220,11 @@ export const DataService = {
             }
 
             if (this.presenceChannel) {
-                await this.presenceChannel.track(presenceState)
+              await this.presenceChannel.track(presenceState)
             }
           }
         } else if (status === 'CHANNEL_ERROR') {
-             console.error('[Presence] CHANNEL_ERROR. Check network/CSP.', this.presenceChannel)
+          console.error('[Presence] CHANNEL_ERROR. Check network/CSP.', this.presenceChannel)
         }
       })
 
@@ -2070,10 +2232,13 @@ export const DataService = {
   },
 
   unsubscribeFromPresence() {
-      if (this.presenceChannel) {
-          console.log('[Presence] Disconnecting...')
-          this.presenceChannel.unsubscribe()
-          this.presenceChannel = null
-      }
+    // Also abort any pending setups
+    this._presenceSetupId++
+
+    if (this.presenceChannel) {
+      console.log('[Presence] Disconnecting...')
+      supabase.removeChannel(this.presenceChannel)
+      this.presenceChannel = null
+    }
   }
 }

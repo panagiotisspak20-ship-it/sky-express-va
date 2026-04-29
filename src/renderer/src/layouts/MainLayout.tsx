@@ -1,21 +1,50 @@
-import { Outlet, useNavigate } from 'react-router-dom'
+import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { Sidebar } from '../components/Sidebar'
 import { DataService } from '../services/dataService'
 import { useState, useEffect } from 'react'
+import { useConnectionCheck } from '../hooks/useConnectionCheck'
 
 export const MainLayout: React.FC = () => {
   const navigate = useNavigate()
+  const location = useLocation()
   const [userCallsign, setUserCallsign] = useState('Loading...')
   const [userColor, setUserColor] = useState('')
   const [msfsConnected, setMsfsConnected] = useState(false)
+  const [vatsimConnected, setVatsimConnected] = useState(false)
+  const [vatsimCallsign, setVatsimCallsign] = useState<string | null>(null)
+
+  // Check connection on every page navigation
+  useConnectionCheck(location.pathname)
 
   useEffect(() => {
-    DataService.getProfile().then((p) => {
-      if (p) {
-        if (p.callsign) setUserCallsign(p.callsign)
-        if (p.equipped_color) setUserColor(p.equipped_color)
-      }
-    })
+    let vatsimInterval: NodeJS.Timeout | undefined
+
+    DataService.getProfile()
+      .then((p) => {
+        if (p) {
+          if (p.callsign) setUserCallsign(p.callsign)
+          if (p.equipped_color) setUserColor(p.equipped_color)
+          
+          if (p.vatsimId) {
+            const checkVatsim = () => {
+              // @ts-ignore
+              if (window.api && window.api.vatsim) {
+                // @ts-ignore
+                window.api.vatsim.getPilot(p.vatsimId)
+                  // @ts-ignore
+                  .then((pilot) => {
+                    setVatsimConnected(!!pilot)
+                    setVatsimCallsign(pilot ? pilot.callsign : null)
+                  })
+                  .catch(console.error)
+              }
+            }
+            checkVatsim() // Check immediately
+            vatsimInterval = setInterval(checkVatsim, 60000) // Re-check every 60 seconds
+          }
+        }
+      })
+      .catch(console.error)
 
     let cleanup: (() => void) | undefined
 
@@ -23,9 +52,12 @@ export const MainLayout: React.FC = () => {
     // @ts-ignore
     if (window.api && window.api.msfs) {
       // @ts-ignore
-      window.api.msfs.getStatus().then((status: boolean) => {
-        setMsfsConnected(status)
-      })
+      window.api.msfs
+        .getStatus()
+        .then((status: boolean) => {
+          setMsfsConnected(status)
+        })
+        .catch(console.error)
       // @ts-ignore
       cleanup = window.api.msfs.onStatus((status: boolean) => {
         setMsfsConnected(status)
@@ -34,6 +66,7 @@ export const MainLayout: React.FC = () => {
 
     return () => {
       if (cleanup) cleanup()
+      if (vatsimInterval) clearInterval(vatsimInterval)
     }
   }, [])
 
@@ -71,7 +104,14 @@ export const MainLayout: React.FC = () => {
           </div>
           <div className="flex items-center gap-1 border-r border-[#2c5282] pr-3 px-2">
             <span className="font-semibold">VATSIM:</span>
-            <span className="text-slate-300">Offline</span>
+            {vatsimConnected ? (
+              <span className="text-green-300 font-bold flex items-center gap-1" title={`Flying as ${vatsimCallsign}`}>
+                Connected
+                {vatsimCallsign && <span className="text-[10px] text-green-100 bg-green-900/40 px-1 py-0.5 rounded border border-green-500/30">{vatsimCallsign}</span>}
+              </span>
+            ) : (
+              <span className="text-slate-300">Offline</span>
+            )}
           </div>
           <div className="flex-1"></div>
           <div className="pl-3 border-l border-[#2c5282] flex items-center gap-2">

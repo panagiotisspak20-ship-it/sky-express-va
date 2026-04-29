@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DataService } from '../services/dataService'
 import { Plane } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { formEntrance, staggerContainer, fadeInUp } from '../utils/animations'
 import logo from '../assets/logo.png'
 
 export const Login = () => {
@@ -19,7 +21,7 @@ export const Login = () => {
       if (result.success) {
         // Get profile to check status
         const profile = await DataService.getProfile()
-        if (profile.status === 'banned' || profile.status === 'suspended') {
+        if (profile?.status === 'banned' || profile?.status === 'suspended') {
           await DataService.logout()
           setError(
             profile.status === 'banned'
@@ -39,7 +41,12 @@ export const Login = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#1a365d] via-[#2c5282] to-[#1a365d] flex items-center justify-center font-tahoma">
-      <div className="bg-white rounded-lg shadow-2xl w-96 overflow-hidden">
+      <motion.div
+        className="bg-white rounded-lg shadow-2xl w-96 overflow-hidden"
+        variants={formEntrance}
+        initial="hidden"
+        animate="visible"
+      >
         {/* Header with Logo */}
         <div className="bg-white p-6 border-b-4 border-[#d63384] flex flex-col items-center">
           <img src={logo} alt="Sky Express" className="w-32 h-auto mb-3" />
@@ -55,8 +62,14 @@ export const Login = () => {
             </p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
+          <motion.form
+            onSubmit={handleLogin}
+            className="space-y-4"
+            variants={staggerContainer}
+            initial="hidden"
+            animate="visible"
+          >
+            <motion.div variants={fadeInUp}>
               <label className="block text-sm font-bold text-[#1a365d] mb-1">Email</label>
               <input
                 type="email"
@@ -65,8 +78,8 @@ export const Login = () => {
                 className="w-full border-2 border-gray-300 rounded px-3 py-2 bg-white outline-none focus:border-[#d63384] focus:ring-2 focus:ring-pink-200 transition-all"
                 placeholder="pilot@example.com"
               />
-            </div>
-            <div>
+            </motion.div>
+            <motion.div variants={fadeInUp}>
               <label className="block text-sm font-bold text-[#1a365d] mb-1">Password</label>
               <input
                 type="password"
@@ -74,7 +87,7 @@ export const Login = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full border-2 border-gray-300 rounded px-3 py-2 bg-white outline-none focus:border-[#d63384] focus:ring-2 focus:ring-pink-200 transition-all"
               />
-            </div>
+            </motion.div>
 
             {error && (
               <div className="bg-red-50 border border-red-400 text-red-700 px-3 py-2 rounded text-sm text-center">
@@ -82,7 +95,7 @@ export const Login = () => {
               </div>
             )}
 
-            <div className="flex gap-3 pt-2">
+            <motion.div variants={fadeInUp} className="flex gap-3 pt-2">
               <button
                 type="button"
                 onClick={() => navigate('/register')}
@@ -96,8 +109,8 @@ export const Login = () => {
               >
                 LOGIN
               </button>
-            </div>
-          </form>
+            </motion.div>
+          </motion.form>
         </div>
 
         {/* Disclaimer */}
@@ -107,7 +120,7 @@ export const Login = () => {
             Sky Express airline. All content is for virtual aviation use only.
           </p>
         </div>
-      </div>
+      </motion.div>
     </div>
   )
 }

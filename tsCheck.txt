@@ -1,0 +1,5 @@
+src/renderer/src/pages/Settings.tsx(2,1): error TS6133: 'UploadCloud' is declared but its value is never read.
+src/renderer/src/pages/SocialHub.tsx(65,29): error TS2551: Property 'cancelConnectionRequest' does not exist on type '{ getFleet(): Promise<Aircraft[]>; addAircraft(aircraft: Omit<Aircraft, "id" | "total_hours" | "condition" | "last_maintenance">): Promise<any>; ... 77 more ...; unsubscribeFromPresence(): void; }'. Did you mean 'sendConnectionRequest'?
+src/renderer/src/pages/Support.tsx(362,42): error TS2304: Cannot find name 'Ticket'.
+src/renderer/src/pages/Support.tsx(367,56): error TS2304: Cannot find name 'Ticket'.
+src/renderer/src/pages/Support.tsx(405,34): error TS2304: Cannot find name 'Ticket'.

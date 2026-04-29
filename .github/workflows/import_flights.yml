@@ -1,0 +1,35 @@
+name: Monthly Flight Schedule Import
+
+on:
+  schedule:
+    # Runs at 2:00 AM UTC on the 1st of every month
+    - cron: '0 2 1 * *'
+  workflow_dispatch:
+    # Allow manual trigger from GitHub Actions UI
+
+jobs:
+  import-schedules:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Import Sky Express flight schedules
+        run: |
+          echo "Triggering flight schedule import for Sky Express (GQ)..."
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/import-flight-schedules" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"airline_iata": "GQ"}')
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          echo "Response ($HTTP_CODE): $BODY"
+
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "::error::Flight import failed with HTTP $HTTP_CODE"
+            exit 1
+          fi
+
+          echo "✅ Flight schedules imported successfully!"

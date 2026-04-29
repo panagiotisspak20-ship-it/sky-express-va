@@ -10,7 +10,7 @@ export interface WeatherData {
 }
 
 export const WeatherService = {
-  async getCurrentWeather(lat: number, lon: number): Promise<WeatherData> {
+  async getCurrentWeather(lat: number, lon: number, locationLabel?: string): Promise<WeatherData> {
     try {
       // @ts-ignore
       const data = await window.api.weather.get(lat, lon)
@@ -24,7 +24,7 @@ export const WeatherService = {
         humidity: current.relative_humidity_2m,
         visibility: current.visibility || 10000,
         condition: this.getWeatherCondition(current.weather_code),
-        location: 'Athens Intl. (LGAV)'
+        location: locationLabel || 'Home Base'
       }
     } catch (error) {
       console.error('Failed to fetch weather', error)
@@ -37,7 +37,7 @@ export const WeatherService = {
         humidity: 50,
         visibility: 10000,
         condition: 'Unknown',
-        location: 'Athens Intl. (Offline)'
+        location: (locationLabel || 'Home Base') + ' (Offline)'
       }
     }
   },

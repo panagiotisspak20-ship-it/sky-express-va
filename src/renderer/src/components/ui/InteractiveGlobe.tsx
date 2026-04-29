@@ -15,18 +15,18 @@ export const InteractiveGlobe = ({ className = '' }: InteractiveGlobeProps) => {
     if (!canvasRef.current) return
 
     const globe = createGlobe(canvasRef.current, {
-      devicePixelRatio: 2,
-      width: 600 * 2,
-      height: 600 * 2,
+      devicePixelRatio: 1,
+      width: 400,
+      height: 400,
       phi: 0,
       theta: 0,
       dark: 0,
-      diffuse: 1.2,
-      mapSamples: 16000,
-      mapBrightness: 6,
-      baseColor: [1, 1, 1],
-      markerColor: [0.1, 0.5, 0.9], // Blue
-      glowColor: [0.8, 0.9, 1],
+      diffuse: 1,
+      mapSamples: 8000,
+      mapBrightness: 5,
+      baseColor: [0.4, 0.6, 0.95],
+      markerColor: [1, 0.8, 0.2],
+      glowColor: [0.4, 0.6, 1],
       markers: [
         // Example locations (London, New York, Tokyo)
         { location: [51.5074, -0.1278], size: 0.05 },

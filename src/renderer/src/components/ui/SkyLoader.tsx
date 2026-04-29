@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import { Plane, Cloud } from 'lucide-react'
+import { useState, useEffect } from 'react'
 
 interface SkyLoaderProps {
   text?: string
@@ -8,6 +9,20 @@ interface SkyLoaderProps {
 }
 
 export const SkyLoader = ({ text, size = 'medium', className = '' }: SkyLoaderProps) => {
+  const [displayText, setDisplayText] = useState(text)
+
+  useEffect(() => {
+    // If text prop changes, reset
+    setDisplayText(text)
+
+    // Set a timeout to show a connection warning if loading takes more than 15s
+    const timeout = setTimeout(() => {
+      setDisplayText('Connection is slow or offline. Please check your internet.')
+    }, 15000)
+
+    return () => clearTimeout(timeout)
+  }, [text])
+
   const sizeClasses = {
     small: 'w-4 h-4',
     medium: 'w-12 h-12',
@@ -50,13 +65,13 @@ export const SkyLoader = ({ text, size = 'medium', className = '' }: SkyLoaderPr
         <div className="absolute inset-0 border-2 border-blue-100 rounded-full opacity-30 box-border" />
       </div>
 
-      {text && (
+      {displayText && (
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="text-blue-900 font-bold text-xs tracking-wider uppercase"
+          className={`font-bold text-xs tracking-wider uppercase max-w-xs text-center ${displayText.includes('slow or offline') ? 'text-red-500' : 'text-blue-900'}`}
         >
-          {text}
+          {displayText}
         </motion.p>
       )}
     </div>

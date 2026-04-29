@@ -1,11 +1,15 @@
 import { useState } from 'react'
-import { Download, Printer } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { Download, Printer, RefreshCw, Ticket, FileText } from 'lucide-react'
 import { DataService, BookedFlight } from '../services/dataService'
-
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import { pageVariants, fadeInUp, slideDown } from '../utils/animations'
 
 export const Dispatch = () => {
   const navigate = useNavigate()
+  const location = useLocation()
+  const existingBookingId = (location.state as any)?.bookingId || null
   const [ofp, setOfp] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -21,16 +25,8 @@ export const Dispatch = () => {
         return
       }
 
-      // In a real browser/electron app, we might run into CORS with direct fetch to SimBrief.
-      // Best practice is to use the main process (ipcRenderer.invoke) to fetch this.
-      // For now, we will try the direct fetch, but fallback to a mock if it fails (for dev resilience).
-
-      // To properly fetch without CORS in Electron, we should rely on the main process proxy if available.
-      // assuming window.api.weather.get is a generic fetcher or we add a new one?
-      // We'll try a direct fetch first as SimBrief sometimes allows it or Electron security disabling helps.
-
       const response = await fetch(
-        `https://www.simbrief.com/api/xml.fetcher.php?userid=${profile.simBriefId}&json=1`
+        `https://www.simbrief.com/api/xml.fetcher.php?userid=${encodeURIComponent(profile.simBriefId)}&json=1`
       )
 
       if (!response.ok) throw new Error('Failed to fetch from SimBrief')
@@ -50,12 +46,34 @@ export const Dispatch = () => {
         fuel: data.fuel.plan_ramp,
         payload: data.weights.payload,
         route: data.general.route,
-        depTime: data.times.sched_out, // Added depTime
-        arrTime: data.times.sched_in, // Added arrTime
-        raw: data // Store full data if needed later
+        depTime: data.times.sched_out,
+        arrTime: data.times.sched_in,
+        raw: data
       })
+      
+      toast.success('Successfully imported dispatch data!')
+
+      // Auto-save the imported OFP if we have an active booking session context.
+      if (existingBookingId) {
+        const formatDurationLocal = (seconds: number) => {
+          if (!seconds) return '--:--'
+          const totalMins = Math.floor(seconds / 60)
+          const h = Math.floor(totalMins / 60)
+          const m = totalMins % 60
+          return `${h}h ${m.toString().padStart(2, '0')}m`
+        }
+
+        await DataService.updateBookedFlight(existingBookingId, {
+          ofpData: data,
+          distance: data?.general?.route_distance || 0,
+          cruiseAlt: Math.round((data?.general?.initial_altitude || 0) / 100),
+          blockFuel: data?.fuel?.plan_ramp || 0,
+          flightTime: formatDurationLocal(data?.times?.est_time_enroute)
+        })
+      }
+
     } catch (err) {
-      console.error(err)
+      console.error('Failed to import OFP:', err)
       setError('Could not import OFP. Check SimBrief ID or Generate a Flight first.')
     } finally {
       setLoading(false)
@@ -65,14 +83,12 @@ export const Dispatch = () => {
   const handleConfirmBooking = async () => {
     if (!ofp) return
 
-    // Helper to format Zulu time
     const formatZulu = (ts: number) => {
       if (!ts) return '--:--Z'
       const d = new Date(ts * 1000)
-      return d.toISOString().substr(11, 5) + 'Z'
+      return d.toISOString().substring(11, 16) + 'Z'
     }
 
-    // Helper to format duration - SimBrief returns time in SECONDS
     const formatDuration = (seconds: number) => {
       if (!seconds) return '--:--'
       const totalMins = Math.floor(seconds / 60)
@@ -81,8 +97,22 @@ export const Dispatch = () => {
       return `${h}h ${m.toString().padStart(2, '0')}m`
     }
 
+    // If we arrived from the Schedule page, a booking already exists — just update it with OFP data
+    if (existingBookingId) {
+      await DataService.updateBookedFlight(existingBookingId, {
+        ofpData: ofp.raw,
+        distance: ofp.raw?.general?.route_distance || 0,
+        cruiseAlt: Math.round((ofp.raw?.general?.initial_altitude || 0) / 100),
+        blockFuel: ofp.raw?.fuel?.plan_ramp || 0,
+        flightTime: formatDuration(ofp.raw?.times?.est_time_enroute)
+      })
+      navigate('/ofp-viewer', { state: { bookingId: existingBookingId } })
+      return
+    }
+
+    // Otherwise, create a brand-new booking (standalone Dispatch usage)
     const bookedFlight: BookedFlight = {
-      id: `SEH${Date.now().toString().slice(-8)}`, // More airline-like confirmation
+      id: `SEH${Date.now().toString().slice(-8)}`,
       flightNumber: ofp.flight,
       departure: ofp.dep,
       arrival: ofp.arr,
@@ -113,71 +143,137 @@ export const Dispatch = () => {
     }
 
     await DataService.addBookedFlight(bookedFlight)
-    navigate('/booked-flights')
+    navigate('/ofp-viewer', { state: { bookingId: bookedFlight.id } })
   }
 
   return (
-    <div className="p-4 h-full flex flex-col font-tahoma bg-[#f0f0f0]">
-      <div className="flex justify-between items-center mb-2 px-1">
-        <h1 className="text-xl font-bold text-[#333] uppercase tracking-tighter">
-          Flight Dispatch / OFP
-        </h1>
-        <div className="flex gap-2">
-          {ofp && (
-            <button
-              onClick={handleConfirmBooking}
-              className="btn-classic flex items-center gap-1 bg-green-100 border-green-400 text-green-800 animate-in fade-in zoom-in"
-            >
-              <span className="font-bold">✓ CONFIRM BOOKING</span>
-            </button>
-          )}
+    <motion.div
+      variants={pageVariants}
+      initial="hidden"
+      animate="visible"
+      className="p-6 h-full flex flex-col font-sans bg-slate-50 gap-6 overflow-hidden"
+    >
+      {/* Header section similar to modern dashboard */}
+      <motion.div variants={slideDown} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex justify-between items-center z-10 flex-shrink-0">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-sky-cyan/10 text-sky-cyan flex items-center justify-center border border-sky-cyan/20 shadow-inner">
+            <FileText className="w-6 h-6" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-black text-sky-navy tracking-tight uppercase">
+              Flight Dispatch Room
+            </h1>
+            <p className="text-sm font-bold tracking-widest text-slate-400 uppercase">
+              Import and review your operational flight plan
+            </p>
+          </div>
+        </div>
+
+        <div className="flex gap-3 items-center">
           <button
             onClick={fetchOfp}
             disabled={loading}
-            className="btn-classic flex items-center gap-1 disabled:opacity-50"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-full font-black text-[11px] tracking-widest transition-all bg-white text-sky-cyan border border-sky-cyan/50 hover:bg-sky-cyan/10 disabled:opacity-50 uppercase"
           >
-            {loading ? <span className="animate-spin">⌛</span> : <Download className="w-3 h-3" />}
-            {loading ? 'IMPORTING...' : 'IMPORT FROM SIMBRIEF'}
+            <Download className="w-4 h-4" /> IMPORT
           </button>
-          <button className="btn-classic flex items-center gap-1" onClick={() => window.print()}>
-            <Printer className="w-3 h-3" /> PRINT
+          <button
+             onClick={fetchOfp}
+             disabled={loading}
+             className="flex items-center gap-2 px-5 py-2.5 rounded-full font-black text-[11px] tracking-widest transition-all bg-white text-slate-500 border border-slate-200 hover:bg-slate-50 disabled:opacity-50 uppercase"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> RELOAD
+          </button>
+          <button
+            onClick={handleConfirmBooking}
+            disabled={!ofp}
+            className={`flex items-center gap-2 px-6 py-2.5 rounded-full font-black text-[11px] tracking-widest shadow-lg transition-all border border-transparent uppercase ${
+              ofp 
+                ? 'bg-sky-magenta hover:bg-[#c2005a] text-white shadow-sky-magenta/30' 
+                : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+            }`}
+          >
+            <Ticket className="w-4 h-4" /> VIEW TICKET
           </button>
         </div>
-      </div>
+      </motion.div>
 
-      <div
-        className="legacy-panel flex-1 bg-white font-mono text-[11px] overflow-auto p-4 border-2 border-gray-300 relative"
+      {/* Main content: OFP container */}
+      <motion.div
+        variants={fadeInUp}
+        className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col overflow-hidden relative"
         data-tutorial="dispatch-info"
       >
-        {error && (
-          <div className="absolute top-0 left-0 right-0 bg-red-100 text-red-700 p-2 text-center border-b border-red-300">
-            {error}
-          </div>
-        )}
+        <div className="bg-gradient-to-r from-sky-cyan to-sky-magenta text-white px-5 py-3 text-[11px] font-black tracking-widest uppercase flex justify-between items-center flex-shrink-0">
+          <span className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-white/80" /> OPERATIONAL FLIGHT PLAN (OFP)
+          </span>
+          {ofp && (
+             <button 
+                onClick={() => window.print()}
+                className="hover:scale-105 transition-transform"
+                title="Print OFP"
+              >
+               <Printer className="w-4 h-4 text-blue-200 hover:text-white" />
+             </button>
+          )}
+        </div>
 
-        {!ofp && !loading && !error && (
-          <div className="flex h-full items-center justify-center text-gray-400 italic">
-            No Operational Flight Plan loaded. Click Import to fetch latest SimBrief plan.
-          </div>
-        )}
+        <div className="flex-1 overflow-auto p-6 bg-slate-50 relative">
+            {error && (
+            <div className="mb-4 bg-rose-50 text-rose-600 p-4 rounded-xl text-center border border-rose-100 text-[11px] font-black tracking-widest uppercase shadow-sm relative z-10">
+                {error}
+            </div>
+            )}
 
-        {ofp && (
-          <pre className="whitespace-pre-wrap leading-tight text-gray-800">
-            {`
-SKY EXPRESS VIRTUAL AIRLINES
+            {!ofp && !loading && !error && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 overflow-hidden">
+                <FileText className="absolute w-[40rem] h-[40rem] text-slate-200/40 -rotate-12 blur-[2px] pointer-events-none" />
+                <div className="relative z-10 flex flex-col items-center text-center p-8 bg-white/60 backdrop-blur-md rounded-3xl border border-white shadow-xl shadow-slate-200/50">
+                  <div className="w-20 h-20 bg-gradient-to-br from-sky-cyan to-sky-magenta rounded-2xl flex items-center justify-center shadow-lg shadow-sky-cyan/20 mb-6 transform -rotate-6">
+                    <FileText className="w-10 h-10 text-white rotate-6" />
+                  </div>
+                  <h2 className="text-2xl font-black text-sky-navy tracking-tight uppercase mb-2">No Dispatch Data Found</h2>
+                  <p className="text-sm font-bold text-slate-500 max-w-sm mb-6 leading-relaxed">
+                    You haven't imported an Operational Flight Plan yet. Click the IMPORT button above to fetch your latest SimBrief plan.
+                  </p>
+                  <button
+                    onClick={fetchOfp}
+                    className="flex items-center gap-2 px-8 py-4 bg-sky-cyan hover:bg-sky-blue text-white rounded-xl font-black tracking-widest text-[11px] uppercase transition-all shadow-lg shadow-sky-cyan/30 hover:-translate-y-0.5"
+                  >
+                    <Download className="w-4 h-4" /> Fetch SimBrief OFP
+                  </button>
+                </div>
+            </div>
+            )}
+
+            {loading && !ofp && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-50">
+                  <div className="relative">
+                    <RefreshCw className="w-16 h-16 text-sky-cyan animate-spin opacity-20 absolute inset-0" />
+                    <FileText className="w-16 h-16 text-sky-magenta animate-pulse relative z-10" />
+                  </div>
+                  <p className="font-black tracking-widest text-sky-navy text-[11px] uppercase mt-6">Fetching Dispatch Data...</p>
+                  <p className="text-[10px] font-bold text-slate-400 mt-2">Contacting SimBrief Servers</p>
+              </div>
+            )}
+
+            {ofp && (
+            <pre className="whitespace-pre-wrap leading-tight text-slate-800 font-mono text-[11px] bg-white p-6 rounded-xl border border-slate-200 shadow-inner max-w-4xl mx-auto block">
+                {`SKY EXPRESS VIRTUAL AIRLINES
 OPERATIONAL FLIGHT PLAN
 --------------------------------------------------------------------
-FLT NO: ${ofp.flight}    DATE: ${ofp.date}
-A/C: ${ofp.aircraft}    
+FLT NO: \${ofp.flight}    DATE: \${ofp.date}
+A/C: \${ofp.aircraft}    
 --------------------------------------------------------------------
-DEP: ${ofp.dep}
-ARR: ${ofp.arr}
+DEP: \${ofp.dep}
+ARR: \${ofp.arr}
 --------------------------------------------------------------------
-BLOCK FUEL: ${ofp.fuel} KG
-PAYLOAD:    ${ofp.payload} KG
+BLOCK FUEL: \${ofp.fuel} KG
+PAYLOAD:    \${ofp.payload} KG
 --------------------------------------------------------------------
 ROUTE:
-${ofp.route}
+\${ofp.route}
 
 --------------------------------------------------------------------
 DISPATCH REMARKS:
@@ -190,9 +286,10 @@ DISPATCH REMARKS:
 
                         CAPTAIN SIGNATURE: __________________
 `}
-          </pre>
-        )}
-      </div>
-    </div>
+            </pre>
+            )}
+        </div>
+      </motion.div>
+    </motion.div>
   )
 }

@@ -1,5 +1,6 @@
 // Shared Sky Express airport database with coordinates
 // Used by LiveMap, BookedFlights, and any future airport-aware features
+import worldAirports from '../assets/worldAirports.json'
 
 export interface Airport {
   icao: string
@@ -42,6 +43,15 @@ export const skyExpressAirports: Airport[] = [
   },
 
   // --- INTERNATIONAL ---
+  {
+    icao: 'EGLL',
+    iata: 'LHR',
+    name: 'London Heathrow',
+    city: 'London',
+    lat: 51.4700,
+    lng: -0.4543,
+    hub: false
+  },
   {
     icao: 'EGKK',
     iata: 'LGW',
@@ -482,7 +492,28 @@ export function haversineNM(lat1: number, lon1: number, lat2: number, lon2: numb
 
 /** Find airport by ICAO code */
 export function getAirportByICAO(icao: string): Airport | undefined {
-  return skyExpressAirports.find((a) => a.icao === icao.toUpperCase().trim())
+  if (!icao) return undefined
+  const code = icao.toUpperCase().trim()
+
+  const primary = skyExpressAirports.find((a) => a.icao === code)
+  if (primary) return primary
+
+  // Support 19,000+ global airports fallback
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const globalData = (worldAirports as any)[code]
+  if (globalData) {
+    return {
+      icao: code,
+      iata: '',
+      name: globalData.name,
+      city: 'Global Airport',
+      lat: globalData.lat,
+      lng: globalData.lng,
+      hub: false
+    }
+  }
+
+  return undefined
 }
 
 /** Find airport by IATA code */

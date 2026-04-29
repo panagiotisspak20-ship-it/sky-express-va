@@ -26,6 +26,10 @@ jobs:
         run: npm ci
 
       - name: Build React App
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_ADMIN_CODE: ${{ secrets.VITE_ADMIN_CODE }}
         run: npm run build
 
       - name: Build and Publish Electron App

@@ -1,16 +1,28 @@
 import React, { useEffect, useState } from 'react'
+
 import { DataService, Tour, PilotTour } from '../services/dataService'
-import { Trophy, ArrowRight, CheckCircle2, Plane } from 'lucide-react'
+import {
+  Trophy,
+  ArrowRight,
+  CheckCircle2,
+  Plane,
+  Map,
+  Compass,
+  CalendarRange,
+  Clock
+} from 'lucide-react'
+import { motion } from 'framer-motion'
 import clsx from 'clsx'
+import { pageVariants, staggerContainer, fadeInUp, slideDown } from '../utils/animations'
 
 export const Tours: React.FC = () => {
   const [tours, setTours] = useState<Tour[]>([])
   const [pilotTours, setPilotTours] = useState<PilotTour[]>([])
   const [loading, setLoading] = useState(true)
-  const [expandedTourId, setExpandedTourId] = useState<string | null>(null)
+
   const [imageError, setImageError] = useState<Record<string, boolean>>({})
 
-  const fetchData = async () => {
+  const fetchData = async (): Promise<void> => {
     setLoading(true)
     try {
       const [allTours, myTours] = await Promise.all([
@@ -30,224 +42,477 @@ export const Tours: React.FC = () => {
     fetchData()
   }, [])
 
-  const handleJoinTour = async (tourId: string) => {
+  const handleJoinTour = async (tourId: string): Promise<void> => {
     try {
       await DataService.joinTour(tourId)
       await fetchData() // Refresh to show progress
     } catch (err) {
-      alert('Failed to join tour. You may already be in it.')
+      console.error('Failed to join tour', err)
     }
   }
 
-  const getPilotProgress = (tourId: string) => {
+  const handleCancelTour = async (tourId: string): Promise<void> => {
+    try {
+      await DataService.cancelTour(tourId)
+      await fetchData() // Refresh to remove from active
+    } catch (err) {
+      console.error('Failed to cancel tour', err)
+    }
+  }
+
+  const getPilotProgress = (tourId: string): PilotTour | undefined => {
     return pilotTours.find((pt) => pt.tour_id === tourId)
   }
 
   if (loading) {
     return (
-      <div className="p-8 text-center text-gray-500 flex flex-col items-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
-        <p>Loading Tours...</p>
+      <div className="p-6 h-full flex items-center justify-center bg-slate-50/50 relative overflow-hidden">
+        <div className="text-slate-400 font-black uppercase tracking-widest text-sm flex gap-3 items-center relative z-10">
+          <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-r-2 border-sky-cyan"></div>
+          Loading Expeditions...
+        </div>
       </div>
     )
   }
 
+  const activeTours = tours.filter((t) => {
+    const p = getPilotProgress(t.id)
+    return p && p.status !== 'completed'
+  })
+
+  const completedTours = tours.filter((t) => {
+    const p = getPilotProgress(t.id)
+    return p && p.status === 'completed'
+  })
+
+  const availableTours = tours.filter((t) => {
+    const p = getPilotProgress(t.id)
+    return !p
+  })
+
   return (
-    <div className="h-full flex flex-col bg-slate-50 overflow-hidden font-sans">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-8 py-6 flex justify-between items-center shadow-sm">
-        <div>
-          <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight flex items-center gap-3">
-            <Trophy className="w-8 h-8 text-yellow-500" />
-            Tours & Expeditions
-          </h1>
-          <p className="text-slate-500 mt-1">
-            Complete sequential flights to earn exclusive badges and rewards.
-          </p>
-        </div>
-      </header>
+    <motion.div
+      className="h-full flex flex-col bg-slate-50 relative overflow-hidden"
+      variants={pageVariants}
+      initial="hidden"
+      animate="visible"
+    >
+      {/* Subtle Background Elements restored to pristine white/light theme */}
+      <div className="absolute top-0 w-full h-96 bg-gradient-to-b from-slate-100 to-transparent pointer-events-none z-0"></div>
 
-      {/* Scrollable Content */}
-      <main className="flex-1 overflow-y-auto p-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-7xl mx-auto">
-          {tours.map((tour) => {
-            const progress = getPilotProgress(tour.id)
-            const isJoined = !!progress
-            const isCompleted = progress?.status === 'completed'
-            const currentLegIndex = progress ? progress.current_leg_order - 1 : 0
-            const totalLegs = tour.legs?.length || 0
-            const progressPercent =
-              totalLegs > 0 ? (Math.min(currentLegIndex, totalLegs) / totalLegs) * 100 : 0
+      {/* Main Scrollable Area */}
+      <div className="flex-1 overflow-y-auto px-6 md:px-12 pt-10 pb-20 relative z-10">
+        {/* Top Header */}
+        <motion.div
+          variants={slideDown}
+          initial="hidden"
+          animate="visible"
+          className="flex flex-col md:flex-row justify-between md:items-end gap-6 mb-12 shrink-0 border-b-2 border-slate-100 pb-6"
+        >
+          <div className="flex items-center gap-5">
+            <div className="w-16 h-16 rounded-[24px] bg-gradient-to-br from-white to-slate-50 border border-slate-200 flex items-center justify-center shadow-sm">
+              <Compass className="w-8 h-8 text-sky-navy" />
+            </div>
+            <div>
+              <h1 className="text-4xl font-black text-sky-navy tracking-tighter uppercase mb-1">
+                Expeditions
+              </h1>
+              <p className="text-slate-400 font-black text-[10px] tracking-[0.3em] uppercase">
+                Sky Express Grand Tours
+              </p>
+            </div>
+          </div>
 
-            // Adjust percentage for completed
-            const displayPercent = isCompleted ? 100 : progressPercent
+          <div className="bg-white border border-slate-200 px-6 py-4 rounded-[24px] shadow-sm flex items-center gap-6">
+            <div className="flex flex-col items-center">
+              <span className="text-2xl font-black text-sky-navy leading-none">
+                {availableTours.length}
+              </span>
+              <span className="text-[9px] font-black tracking-[0.2em] text-slate-400 mt-1 uppercase">
+                Available
+              </span>
+            </div>
+            <div className="w-px h-10 bg-slate-200 mx-1"></div>
+            <div className="flex flex-col items-center">
+              <span className="text-2xl font-black text-sky-cyan leading-none">
+                {activeTours.length}
+              </span>
+              <span className="text-[9px] font-black tracking-[0.2em] text-slate-400 mt-1 uppercase">
+                Active
+              </span>
+            </div>
+            <div className="w-px h-10 bg-slate-200 mx-1"></div>
+            <div className="flex flex-col items-center">
+              <span className="text-2xl font-black text-emerald-500 leading-none">
+                {completedTours.length}
+              </span>
+              <span className="text-[9px] font-black tracking-[0.2em] text-slate-400 mt-1 uppercase">
+                Mastered
+              </span>
+            </div>
+          </div>
+        </motion.div>
 
-            return (
-              <div
-                key={tour.id}
-                className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow flex flex-col"
-              >
-                <div className="p-6 flex-1">
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="flex gap-4">
-                      {/* Badge Preview */}
-                      <div className="w-20 h-20 bg-slate-100 rounded-lg flex items-center justify-center border border-slate-200 flex-shrink-0">
-                        {tour.badge_image_url && !imageError[tour.id] ? (
-                          <img
-                            src={tour.badge_image_url}
-                            alt="Badge"
-                            className="w-16 h-16 object-contain drop-shadow-sm"
-                            onError={() => setImageError((prev) => ({ ...prev, [tour.id]: true }))}
-                          />
-                        ) : (
-                          <Trophy className="w-10 h-10 text-slate-300" />
-                        )}
+        <motion.div
+          variants={staggerContainer}
+          initial="hidden"
+          animate="visible"
+          className="flex flex-col gap-12 w-full mx-auto relative z-10"
+        >
+          {/* Section: SPLIT-PANEL ACTIVE DASHBOARD */}
+          {activeTours.length > 0 && (
+            <div className="flex flex-col gap-6 w-full">
+              <h3 className="text-xs font-black tracking-[0.2em] text-slate-400 uppercase flex items-center gap-3 ml-2">
+                <span className="w-8 h-px bg-sky-cyan"></span> Active Operations
+              </h3>
+
+              {activeTours.map((tour) => {
+                const progress = getPilotProgress(tour.id)!
+                const totalLegs = tour.legs?.length || 0
+                const currentLegIndex = progress.current_leg_order - 1
+                const progressPercent =
+                  totalLegs > 0 ? (Math.min(currentLegIndex, totalLegs) / totalLegs) * 100 : 0
+                const nextLeg = tour.legs?.[currentLegIndex]
+
+                return (
+                  <motion.div
+                    variants={fadeInUp}
+                    key={tour.id}
+                    className="w-full grid grid-cols-1 xl:grid-cols-12 gap-8 items-start"
+                  >
+                    {/* LEFT PANEL: The Tour Briefing */}
+                    <div className="xl:col-span-5 bg-white rounded-[2rem] border border-slate-200 shadow-xl shadow-slate-200/50 flex flex-col p-8 md:p-10 relative overflow-hidden group">
+                      <div className="absolute top-0 right-0 w-64 h-64 bg-slate-50 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 opacity-50"></div>
+
+                      <div className="flex items-center gap-6 relative z-10 mb-8">
+                        <div className="w-24 h-24 rounded-2xl bg-white border border-slate-100 flex items-center justify-center flex-shrink-0 shadow-md p-3 group-hover:scale-105 transition-transform duration-500">
+                          {tour.badge_image_url && !imageError[tour.id] ? (
+                            <img
+                              src={tour.badge_image_url}
+                              alt="Badge"
+                              className="w-full h-full object-contain drop-shadow-sm"
+                              onError={() =>
+                                setImageError((prev) => ({ ...prev, [tour.id]: true }))
+                              }
+                            />
+                          ) : (
+                            <Compass className="w-10 h-10 text-slate-300" />
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex justify-between items-start mb-2">
+                            <div className="inline-block px-3 py-1 bg-sky-cyan/10 text-sky-cyan text-[10px] font-black tracking-widest uppercase rounded-lg border border-sky-cyan/20">
+                              Deployed En-Route
+                            </div>
+                            {currentLegIndex === 0 && (
+                              <button
+                                onClick={() => handleCancelTour(tour.id)}
+                                className="text-[10px] font-black tracking-widest uppercase text-red-500 hover:text-red-600 transition-colors bg-red-50 hover:bg-red-100 px-3 py-1 rounded-lg border border-red-100 shadow-sm"
+                                title="Cancel deployment (only available before flying leg 1)"
+                              >
+                                Abort Operation
+                              </button>
+                            )}
+                          </div>
+                          <h2 className="text-3xl font-black text-sky-navy tracking-tighter uppercase leading-none drop-shadow-sm">
+                            {tour.title}
+                          </h2>
+                        </div>
                       </div>
-                      <div>
-                        <h2 className="text-xl font-bold text-slate-800">{tour.title}</h2>
-                        <p className="text-sm text-slate-500 mt-1 line-clamp-2">
-                          {tour.description}
-                        </p>
-                        <div className="flex items-center gap-2 mt-3">
-                          <span className="bg-blue-50 text-blue-700 text-xs px-2 py-1 rounded font-medium border border-blue-100">
-                            {totalLegs} Legs
-                          </span>
-                          {isCompleted && (
-                            <span className="bg-green-50 text-green-700 text-xs px-2 py-1 rounded font-medium border border-green-100 flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3" /> Completed
+
+                      <p className="text-sm font-medium text-slate-500 mb-10 leading-relaxed border-b border-slate-100 pb-8 relative z-10">
+                        {tour.description}
+                      </p>
+
+                      {/* Vertical Stats */}
+                      <div className="flex flex-col gap-6 relative z-10">
+                        <div>
+                          <div className="flex justify-between items-center text-[10px] font-black tracking-[0.2em] text-slate-400 uppercase mb-3">
+                            <span>Overall Progress</span>
+                            <span className="text-sky-navy">
+                              LEG {progress.current_leg_order} OF {totalLegs}
                             </span>
+                          </div>
+                          <div className="h-3 bg-slate-100 rounded-full overflow-hidden shadow-inner relative">
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${progressPercent}%` }}
+                              transition={{ duration: 1.5, ease: 'easeOut' }}
+                              className="h-full bg-gradient-to-r from-sky-cyan to-sky-navy rounded-full relative"
+                            ></motion.div>
+                          </div>
+                        </div>
+
+                        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 mt-4">
+                          <h4 className="text-[10px] text-slate-400 font-black tracking-[0.2em] uppercase mb-4 flex items-center gap-2">
+                            <Plane className="w-4 h-4 text-sky-cyan" /> Next Objective
+                          </h4>
+
+                          {nextLeg ? (
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-4">
+                                <span className="text-2xl font-black text-sky-navy font-mono uppercase bg-white px-3 py-1 rounded-lg border border-slate-200 shadow-sm">
+                                  {nextLeg.departure_icao}
+                                </span>
+                                <ArrowRight className="w-5 h-5 text-slate-300" />
+                                <span className="text-2xl font-black text-sky-navy font-mono uppercase bg-white px-3 py-1 rounded-lg border border-slate-200 shadow-sm">
+                                  {nextLeg.arrival_icao}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-emerald-500 font-black tracking-widest uppercase text-sm">
+                              Tour Completed
+                            </span>
+                          )}
+
+                          {nextLeg?.leg_name && (
+                            <div className="mt-4 text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
+                              <Map className="w-3 h-3 text-slate-400" />
+                              {nextLeg.leg_name}
+                            </div>
                           )}
                         </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Progress Bar (if joined) */}
-                  {isJoined && (
-                    <div className="mt-4 mb-2">
-                      <div className="flex justify-between text-xs text-slate-500 mb-1 font-semibold uppercase tracking-wider">
-                        <span>Progress</span>
-                        <span>
-                          {isCompleted
-                            ? 'All Legs Flown'
-                            : `Leg ${progress.current_leg_order} of ${totalLegs}`}
-                        </span>
-                      </div>
-                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div
-                          className={clsx(
-                            'h-full transition-all duration-500',
-                            isCompleted ? 'bg-green-500' : 'bg-blue-600'
-                          )}
-                          style={{ width: `${displayPercent}%` }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
+                    {/* RIGHT PANEL: Permanent Full-Trace Itinerary Timeline */}
+                    {/* This beautifully utilizes the massive horizontal emptiness */}
+                    <div className="xl:col-span-7 bg-white rounded-[2rem] border border-slate-200 p-8 h-full min-h-[500px] shadow-xl shadow-slate-200/50 flex flex-col relative overflow-hidden">
+                      <h3 className="text-[10px] font-black tracking-[0.2em] text-slate-400 uppercase flex items-center gap-3 mb-8 border-b border-slate-100 pb-6">
+                        <Clock className="w-4 h-4 text-sky-cyan" /> Itinerary Schedule Timeline
+                      </h3>
 
-                {/* Legs List (Expandable) */}
-                <div className="border-t border-gray-100 bg-slate-50/50">
-                  <button
-                    onClick={() => setExpandedTourId(expandedTourId === tour.id ? null : tour.id)}
-                    className="w-full px-6 py-3 text-sm text-slate-600 font-medium hover:bg-slate-100 flex justify-between items-center"
-                  >
-                    <span>View Route Details</span>
-                    <span className="text-xs text-slate-400">
-                      {expandedTourId === tour.id ? 'Hide' : 'Show'}
-                    </span>
-                  </button>
+                      <div className="flex-1 overflow-y-auto pr-4 space-y-4 custom-scrollbar relative">
+                        {/* Vertical timeline line */}
+                        <div className="absolute top-6 bottom-6 left-[22px] w-0.5 bg-slate-100 rounded-full z-0"></div>
 
-                  {expandedTourId === tour.id && (
-                    <div className="px-6 pb-6 pt-2 space-y-3">
-                      {tour.legs?.map((leg) => {
-                        const isFlown =
-                          isJoined &&
-                          (progress.current_leg_order > leg.sequence_order || isCompleted)
-                        const isCurrent =
-                          isJoined &&
-                          !isCompleted &&
-                          progress.current_leg_order === leg.sequence_order
+                        {tour.legs?.map((leg) => {
+                          const isFlown = progress.current_leg_order > leg.sequence_order
+                          const isCurrent = progress.current_leg_order === leg.sequence_order
+                          const isFuture = !isFlown && !isCurrent
 
-                        return (
-                          <div
-                            key={leg.id}
-                            className={clsx(
-                              'flex items-center justify-between p-3 rounded border text-sm',
-                              isFlown
-                                ? 'bg-green-50 border-green-200 text-green-800'
-                                : isCurrent
-                                  ? 'bg-blue-50 border-blue-200 text-blue-800 ring-1 ring-blue-200'
-                                  : 'bg-white border-gray-200 text-slate-600'
-                            )}
-                          >
-                            <div className="flex items-center gap-3">
+                          return (
+                            <div
+                              key={leg.id}
+                              className="flex items-center gap-6 relative z-10 group"
+                            >
                               <div
                                 className={clsx(
-                                  'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold',
+                                  'w-[46px] h-[46px] rounded-full border-[3px] flex items-center justify-center shrink-0 transition-colors shadow-sm',
                                   isFlown
-                                    ? 'bg-green-200 text-green-700'
+                                    ? 'bg-emerald-500 border-emerald-100 text-white shadow-emerald-500/20'
                                     : isCurrent
-                                      ? 'bg-blue-600 text-white'
-                                      : 'bg-slate-200 text-slate-500'
+                                      ? 'bg-sky-cyan border-white ring-4 ring-sky-cyan/20 text-white animate-pulse'
+                                      : 'bg-white border-slate-200 text-slate-400'
                                 )}
                               >
-                                {leg.sequence_order}
+                                {isFlown ? (
+                                  <CheckCircle2 className="w-5 h-5" />
+                                ) : (
+                                  <span className="text-[10px] font-black tracking-tighter">
+                                    {leg.sequence_order}
+                                  </span>
+                                )}
                               </div>
-                              <div className="flex flex-col">
-                                <div className="flex items-center gap-1 font-bold">
-                                  <span>{leg.departure_icao}</span>
-                                  <ArrowRight className="w-3 h-3 opacity-50" />
-                                  <span>{leg.arrival_icao}</span>
+
+                              <div
+                                className={clsx(
+                                  'flex-1 flex flex-col sm:flex-row sm:items-center justify-between p-5 rounded-2xl border transition-all duration-300',
+                                  isFlown
+                                    ? 'bg-slate-50 border-slate-200/60 opacity-60'
+                                    : isCurrent
+                                      ? 'bg-sky-cyan/5 border-sky-cyan/30 shadow-[0_0_20px_rgba(76,201,240,0.1)] ring-1 ring-sky-cyan/10'
+                                      : 'bg-white border-slate-100 hover:border-slate-300'
+                                )}
+                              >
+                                <div>
+                                  <div className="flex items-center gap-3">
+                                    <span
+                                      className={clsx(
+                                        'font-black text-xl font-mono uppercase',
+                                        isFlown
+                                          ? 'text-slate-500'
+                                          : isCurrent
+                                            ? 'text-sky-navy'
+                                            : 'text-slate-600'
+                                      )}
+                                    >
+                                      {leg.departure_icao}
+                                    </span>
+                                    <ArrowRight
+                                      className={clsx(
+                                        'w-4 h-4',
+                                        isFlown
+                                          ? 'text-slate-300'
+                                          : isCurrent
+                                            ? 'text-sky-cyan'
+                                            : 'text-slate-300'
+                                      )}
+                                    />
+                                    <span
+                                      className={clsx(
+                                        'font-black text-xl font-mono uppercase',
+                                        isFlown
+                                          ? 'text-slate-500'
+                                          : isCurrent
+                                            ? 'text-sky-navy'
+                                            : 'text-slate-600'
+                                      )}
+                                    >
+                                      {leg.arrival_icao}
+                                    </span>
+                                  </div>
+                                  {leg.leg_name && (
+                                    <div
+                                      className={clsx(
+                                        'text-[9px] font-black tracking-[0.1em] uppercase mt-1.5',
+                                        isFlown
+                                          ? 'text-slate-400'
+                                          : isCurrent
+                                            ? 'text-sky-cyan/80'
+                                            : 'text-slate-400'
+                                      )}
+                                    >
+                                      {leg.leg_name}
+                                    </div>
+                                  )}
                                 </div>
-                                {leg.leg_name && (
-                                  <span className="text-xs opacity-75">{leg.leg_name}</span>
+                                {isCurrent && (
+                                  <span className="hidden sm:inline-block px-3 py-1 bg-sky-cyan text-white text-[9px] font-black tracking-widest uppercase rounded-lg shadow-sm">
+                                    En-Route
+                                  </span>
+                                )}
+                                {isFlown && (
+                                  <span className="hidden sm:inline-block text-[9px] font-black tracking-widest uppercase text-emerald-500">
+                                    Completed
+                                  </span>
+                                )}
+                                {isFuture && (
+                                  <span className="hidden sm:inline-block text-[9px] font-black tracking-widest uppercase text-slate-300">
+                                    Pending
+                                  </span>
                                 )}
                               </div>
                             </div>
-
-                            {isFlown && <CheckCircle2 className="w-4 h-4 text-green-600" />}
-                            {isCurrent && <Plane className="w-4 h-4 text-blue-600 animate-pulse" />}
-                          </div>
-                        )
-                      })}
+                          )
+                        })}
+                      </div>
                     </div>
-                  )}
-                </div>
+                  </motion.div>
+                )
+              })}
+            </div>
+          )}
 
-                {/* Footer Actions */}
-                <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end">
-                  {!isJoined ? (
+          {/* Section: AVAILABLE & COMPLETED DATABASE GRID */}
+          <div className="flex flex-col gap-6 w-full pt-8">
+            {(availableTours.length > 0 || completedTours.length > 0) && (
+              <h3 className="text-xs font-black tracking-[0.2em] text-slate-400 uppercase flex items-center gap-3 ml-2">
+                <span className="w-8 h-px bg-slate-300"></span> Expedition Database
+              </h3>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 w-full">
+              {/* Available Tours */}
+              {availableTours.map((tour) => (
+                <motion.div
+                  variants={fadeInUp}
+                  key={tour.id}
+                  className="w-full bg-white rounded-[2rem] border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-sky-cyan/30 transition-all duration-300 flex flex-col overflow-hidden group"
+                >
+                  <div className="p-8 pb-0">
+                    <div className="flex justify-between items-start gap-4 border-b border-slate-100 pb-6 mb-6">
+                      <div className="w-20 h-20 rounded-2xl bg-white border border-slate-100 flex items-center justify-center p-3 shadow-md group-hover:scale-110 transition-transform duration-500 relative z-10 shrink-0">
+                        {tour.badge_image_url && !imageError[tour.id] ? (
+                          <img
+                            src={tour.badge_image_url}
+                            alt="Badge"
+                            className="w-full h-full object-contain"
+                            onError={() => setImageError((prev) => ({ ...prev, [tour.id]: true }))}
+                          />
+                        ) : (
+                          <Compass className="w-8 h-8 text-slate-300" />
+                        )}
+                      </div>
+                      <div className="flex-1 text-right">
+                        <h2 className="text-2xl font-black text-sky-navy tracking-tighter uppercase leading-none">
+                          {tour.title}
+                        </h2>
+                        <span className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 bg-slate-50 text-slate-500 text-[10px] font-black tracking-widest uppercase rounded-lg border border-slate-200">
+                          <CalendarRange className="w-3 h-3" /> {tour.legs?.length || 0} TOTAL LEGS
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="px-8 pb-8 flex-1 flex flex-col justify-between">
+                    <p className="text-sm font-medium text-slate-500 line-clamp-2 md:line-clamp-3 mb-6 relative z-10">
+                      {tour.description}
+                    </p>
+
                     <button
                       onClick={() => handleJoinTour(tour.id)}
-                      className="px-4 py-2 bg-slate-900 text-white text-sm font-bold rounded-lg hover:bg-slate-800 transition-colors shadow-sm"
+                      className="w-full py-4 bg-slate-50 hover:bg-sky-cyan group-hover:bg-sky-navy text-slate-500 group-hover:text-white text-[10px] font-black tracking-[0.2em] uppercase rounded-xl transition-all shadow-sm group-hover:shadow-md flex items-center justify-center gap-2 border border-slate-200 group-hover:border-sky-navy"
                     >
-                      Start Tour
+                      Begin Operations <ArrowRight className="w-4 h-4 opacity-50" />
                     </button>
-                  ) : isCompleted ? (
-                    <span className="text-sm font-bold text-green-600 flex items-center gap-1 px-3 py-2">
-                      Badge Earned
-                    </span>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-500 font-medium px-2">
-                        Fly Leg {progress.current_leg_order} to advance
-                      </span>
-                      <button
-                        className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 shadow-sm opacity-50 cursor-not-allowed"
-                        disabled
-                        title="Go to 'Booked Flights' or 'Free Roam' and fly the route!"
-                      >
-                        In Progress
-                      </button>
+                  </div>
+                </motion.div>
+              ))}
+
+              {/* Completed Tours */}
+              {completedTours.map((tour) => (
+                <motion.div
+                  variants={fadeInUp}
+                  key={tour.id}
+                  className="w-full bg-white rounded-[2rem] border border-emerald-100 shadow-sm flex flex-col overflow-hidden relative group"
+                >
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-50 rounded-bl-[100px] z-0 opacity-50 group-hover:scale-110 transition-transform duration-500"></div>
+
+                  <div className="p-8 pb-0 relative z-10">
+                    <div className="flex justify-between items-start gap-4 border-b border-emerald-50 pb-6 mb-6">
+                      <div className="w-20 h-20 rounded-2xl bg-white border border-emerald-100 flex items-center justify-center p-3 shadow-sm relative z-10 shrink-0">
+                        <div className="absolute -top-2 -right-2 w-6 h-6 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg border-2 border-white">
+                          <CheckCircle2 className="w-3 h-3 text-white" />
+                        </div>
+                        {tour.badge_image_url && !imageError[tour.id] ? (
+                          <img
+                            src={tour.badge_image_url}
+                            alt="Badge"
+                            className="w-full h-full object-contain grayscale-[20%]"
+                            onError={() => setImageError((prev) => ({ ...prev, [tour.id]: true }))}
+                          />
+                        ) : (
+                          <Trophy className="w-8 h-8 text-emerald-500" />
+                        )}
+                      </div>
+                      <div className="flex-1 text-right">
+                        <h2 className="text-2xl font-black text-emerald-700 tracking-tighter uppercase leading-none">
+                          {tour.title}
+                        </h2>
+                        <span className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-600 text-[10px] font-black tracking-widest uppercase rounded-lg border border-emerald-100">
+                          <Trophy className="w-3 h-3" /> Mastered
+                        </span>
+                      </div>
                     </div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </main>
-    </div>
+                  </div>
+
+                  <div className="px-8 pb-8 flex-1 flex flex-col justify-between relative z-10">
+                    <p className="text-sm font-medium text-slate-400 line-clamp-2 mb-6 line-through decoration-slate-200 opacity-80">
+                      {tour.description}
+                    </p>
+
+                    <div className="w-full py-4 bg-emerald-50/50 text-emerald-600 text-[10px] font-black tracking-[0.2em] uppercase rounded-xl flex items-center justify-center gap-2 border border-emerald-100">
+                      <CheckCircle2 className="w-4 h-4" /> Tour Successfully Completed
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    </motion.div>
   )
 }

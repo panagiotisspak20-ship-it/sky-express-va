@@ -1,7 +1,7 @@
 export const formatZulu = (timestamp: number | string): string => {
   if (!timestamp) return '--:--'
   const date = new Date(Number(timestamp) * 1000)
-  return date.toISOString().substr(11, 5) + ' Z'
+  return date.toISOString().substring(11, 16) + ' Z'
 }
 
 export const formatLocal = (timestamp: number | string): string => {
